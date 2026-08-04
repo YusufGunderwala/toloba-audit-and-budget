@@ -36,12 +36,13 @@ export default function ChangePasswordModal({ user, onClose }) {
       if (updateError) throw updateError;
 
       await logAuditEvent(user, 'CHANGE_PASSWORD', 'User updated account password');
-      setSuccess('Password changed successfully! Use your new password on next sign in.');
+      setSuccess('Password changed! Logging out of all devices for security...');
       setNewPassword('');
       setConfirmPassword('');
-      setTimeout(() => {
-        onClose();
-      }, 2000);
+      
+      setTimeout(async () => {
+        await supabase.auth.signOut({ scope: 'global' });
+      }, 3000);
     } catch (err) {
       setError(err.message || 'Failed to update password.');
     } finally {

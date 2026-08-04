@@ -55,7 +55,7 @@ export default function Sidebar({ activeTab, setActiveTab, user, userRole, onLog
           <img src="/TolobaLogoAnand.png" alt="Toloba Logo" className="w-full h-full object-contain" />
         </div>
         <h2 className="font-bold text-sm text-center tracking-wide leading-tight mt-1 text-white">TOLOBA UL KULLIYAAT IL MUMINOON (ANAND)</h2>
-        <p className="text-toloba-light/70 text-[11px] font-medium mt-1 uppercase tracking-widest">Treasury Suite v2.0</p>
+        <p className="text-toloba-light/70 text-[11px] font-medium mt-1 uppercase tracking-widest">Treasury Suite</p>
       </div>
       
       {/* Navigation */}
