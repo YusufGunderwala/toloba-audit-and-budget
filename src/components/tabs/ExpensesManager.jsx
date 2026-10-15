@@ -130,39 +130,39 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
       
       {/* Top Bar */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-wrap gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm gap-4">
         <div>
           <h2 className="text-base font-bold text-slate-800">Committee Expense Log ({filteredExpenses.length})</h2>
-          <p className="text-xs text-slate-400">Total Outflow Logged: <span className="font-extrabold text-red-600">₹{totalExpense.toLocaleString('en-IN')}</span></p>
+          <p className="text-xs text-slate-400 mt-0.5">Total Outflow Logged: <span className="font-extrabold text-red-600">₹{totalExpense.toLocaleString('en-IN')}</span></p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
           {canWrite && (
             <button 
               onClick={() => setShowForm(!showForm)} 
-              className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 px-3.5 rounded-xl flex items-center gap-1.5 shadow transition-all"
+              className="flex-1 sm:flex-none justify-center bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 px-3.5 rounded-xl flex items-center gap-1.5 shadow transition-all"
             >
-              <PlusCircle size={16} /> {showForm ? 'Close Form' : 'Log New Expense'}
+              <PlusCircle size={16} /> <span>{showForm ? 'Close Form' : 'Log New Expense'}</span>
             </button>
           )}
           <button 
             onClick={handleExportExcel}
-            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow"
+            className="flex-1 sm:flex-none justify-center px-3.5 py-2 bg-slate-800 hover:bg-slate-900 transition-all text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow"
           >
-            <FileSpreadsheet size={16} /> Export Expenses (.xlsx)
+            <FileSpreadsheet size={16} /> <span>Export (.xlsx)</span>
           </button>
         </div>
       </div>
 
       {/* ===== LOG EXPENSE FORM ===== */}
       {showForm && canWrite && (
-        <div className="bg-white p-6 rounded-2xl border border-red-200 shadow-xl max-w-2xl mx-auto">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-red-200 shadow-xl max-w-2xl mx-auto">
           <h3 className="text-lg font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
             <TrendingDown size={20} className="text-red-600" /> Log Outflow Voucher
           </h3>
 
           <form onSubmit={handleCreateExpense} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Expense Title</label>
                 <input 
@@ -192,7 +192,7 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Category</label>
                 <CustomSelect 
@@ -219,7 +219,7 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Link to Event (Optional)</label>
                 <CustomSelect 
@@ -245,7 +245,7 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Voucher / Bill No (Optional)</label>
                 <input 
@@ -270,10 +270,10 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
             </div>
 
             <div className="pt-2 flex justify-end gap-3">
-              <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl">
+              <button type="button" onClick={() => setShowForm(false)} className="w-1/2 sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl">
                 Cancel
               </button>
-              <button type="submit" disabled={loading} className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow flex items-center gap-1.5">
+              <button type="submit" disabled={loading} className="w-1/2 sm:w-auto px-6 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl shadow flex items-center justify-center gap-1.5">
                 <CheckCircle2 size={16} /> {loading ? 'Saving...' : 'Save Expense'}
               </button>
             </div>
@@ -283,7 +283,69 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
 
       {/* ===== LIST VIEW ===== */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        
+        {/* Mobile View: Modern Outflow Cards (No Horizontal Scroll) */}
+        <div className="divide-y divide-slate-100 md:hidden">
+          {filteredExpenses.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-sm">No expenses logged yet.</div>
+          ) : (
+            filteredExpenses.map(e => (
+              <div key={e.id} className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="font-mono text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      {e.voucher_no || 'EXP'}
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {new Date(e.created_at).toLocaleDateString('en-GB')}
+                    </span>
+                    {e.category && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                        {e.category}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="font-bold text-slate-800 text-sm truncate">{e.title}</p>
+
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1 flex-wrap">
+                    {e.vendor_name && <span>Vendor: <span className="text-slate-600 font-medium">{e.vendor_name}</span></span>}
+                    {e.events?.event_name && (
+                      <>
+                        {e.vendor_name && <span>•</span>}
+                        <span className="text-blue-600 font-medium bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 text-[10px]">{e.events.event_name}</span>
+                      </>
+                    )}
+                    {e.payment_mode && (
+                      <>
+                        <span>•</span>
+                        <span className="font-semibold text-slate-500">{e.payment_mode}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-right flex flex-col items-end gap-1.5 flex-shrink-0">
+                  <span className="text-base font-extrabold text-red-600">
+                    -₹{parseFloat(e.amount).toLocaleString('en-IN')}
+                  </span>
+                  {canWrite && (
+                    <button 
+                      onClick={() => handleDeleteExpense(e)}
+                      className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors inline-flex items-center gap-1 text-xs font-bold"
+                      title="Delete Record"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop View: Full Spreadsheet Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm whitespace-nowrap">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">

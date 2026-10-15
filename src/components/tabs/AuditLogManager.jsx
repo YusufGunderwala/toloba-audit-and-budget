@@ -38,33 +38,62 @@ export default function AuditLogManager({ auditLogs, searchTerm }) {
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
       
       {/* Top Header */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-wrap gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm gap-4">
         <div>
           <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-            <ShieldCheck size={20} className="text-toloba" /> Immutable Security Audit Trail ({filteredLogs.length})
+            <ShieldCheck size={20} className="text-toloba flex-shrink-0" /> Immutable Security Audit Trail ({filteredLogs.length})
           </h2>
-          <p className="text-xs text-slate-400">Complete, tamper-evident log of all financial actions, receipt generations, and member modifications</p>
+          <p className="text-xs text-slate-400 mt-0.5">Complete, tamper-evident log of all financial actions, receipt generations, and member modifications</p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
           <button 
             onClick={handleExportExcel}
-            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow"
+            className="flex-1 sm:flex-none justify-center px-3.5 py-2 bg-slate-800 hover:bg-slate-900 transition-all text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow"
           >
-            <FileSpreadsheet size={16} /> Excel (.xlsx)
+            <FileSpreadsheet size={16} /> <span>Excel (.xlsx)</span>
           </button>
           <button 
             onClick={handleExportPDF}
-            className="btn-primary text-xs font-bold py-2 px-3.5 flex items-center gap-2 shadow"
+            className="flex-1 sm:flex-none justify-center btn-primary text-xs font-bold py-2 px-3.5 flex items-center gap-2 shadow"
           >
-            <Activity size={16} /> PDF Audit Report
+            <Activity size={16} /> <span>PDF Report</span>
           </button>
         </div>
       </div>
 
       {/* Audit Log Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        
+        {/* Mobile View: Modern Audit Event Cards (No Horizontal Scroll) */}
+        <div className="divide-y divide-slate-100 md:hidden">
+          {filteredLogs.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-sm">No audit events recorded yet.</div>
+          ) : (
+            filteredLogs.map(l => (
+              <div key={l.id} className="p-4 space-y-2 hover:bg-slate-50/60 transition-colors">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold text-toloba bg-toloba/10 px-2 py-0.5 rounded border border-toloba/20">
+                    {l.action}
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {new Date(l.created_at).toLocaleString('en-GB')}
+                  </span>
+                </div>
+                <p className="text-xs font-semibold text-slate-800 leading-relaxed">
+                  {l.details || 'No additional details'}
+                </p>
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 pt-0.5">
+                  <User size={12} className="text-slate-400 flex-shrink-0" />
+                  <span className="truncate">{l.user_email || 'System'}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop View: Full Spreadsheet Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">

@@ -15,7 +15,7 @@ import { supabase } from '../../lib/supabase';
 import { exportToExcel } from '../../lib/exportUtils';
 import { logAuditEvent } from '../../lib/auditLogger';
 
-export default function MembersManager({ members, receipts, user, canWrite, onRefresh, searchTerm }) {
+export default function MembersManager({ members, receipts, invoices, user, canWrite, onRefresh, searchTerm }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [selectedLedgerMember, setSelectedLedgerMember] = useState(null);
@@ -127,12 +127,54 @@ export default function MembersManager({ members, receipts, user, canWrite, onRe
       ? receipts.filter(r => r.member_id === selectedLedgerMember.id)
       : [];
   }, [selectedLedgerMember, receipts]);
+
+  const memberInvoices = useMemo(() => {
+    // Only safely parse if invoices exists
+    return selectedLedgerMember && invoices
+      ? invoices.filter(inv => inv.client_its === selectedLedgerMember.its_number)
+      : [];
+  }, [selectedLedgerMember, invoices]);
   
   const memberTotalPaid = useMemo(() => {
     return memberReceipts
       .filter(r => r.status !== 'void')
       .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
   }, [memberReceipts]);
+
+  const memberOutstandingDues = useMemo(() => {
+    return memberInvoices
+      .filter(inv => inv.status === 'unpaid')
+      .reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
+  }, [memberInvoices]);
+
+  const passbookTimeline = useMemo(() => {
+    // Map receipts to a standard timeline format
+    const mappedReceipts = memberReceipts.map(r => ({
+      ...r,
+      type: 'receipt',
+      date: new Date(r.created_at),
+      title_display: r.receipt_no,
+      subtitle_display: `${r.period_month} ${r.period_year} • Mode: ${r.payment_mode}`,
+      amount_display: parseFloat(r.amount),
+      status_display: r.status?.toUpperCase() || 'VALID',
+      isCredit: true
+    }));
+
+    // Map invoices to a standard timeline format
+    const mappedInvoices = memberInvoices.map(inv => ({
+      ...inv,
+      type: 'invoice',
+      date: new Date(inv.created_at),
+      title_display: inv.invoice_no,
+      subtitle_display: inv.title,
+      amount_display: parseFloat(inv.amount),
+      status_display: inv.status?.toUpperCase() || 'UNPAID',
+      isCredit: false
+    }));
+
+    // Combine and sort descending by date
+    return [...mappedReceipts, ...mappedInvoices].sort((a, b) => b.date - a.date);
+  }, [memberReceipts, memberInvoices]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
@@ -168,7 +210,83 @@ export default function MembersManager({ members, receipts, user, canWrite, onRe
 
       {/* ===== MEMBERS TABLE ===== */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        
+        {/* Mobile View: Modern Member Directory Cards (No Horizontal Scroll) */}
+        <div className="divide-y divide-slate-100 md:hidden">
+          {filteredMembers.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-sm">No members found.</div>
+          ) : (
+            filteredMembers.map(m => {
+              const mReceipts = receipts.filter(r => r.member_id === m.id && r.status !== 'void');
+              const mTotal = mReceipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+
+              return (
+                <div key={m.id} className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-slate-900 text-sm truncate">{m.name}</p>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1 flex-wrap">
+                      <span className="font-mono text-slate-600 font-semibold">ITS: {m.its_number}</span>
+                      {m.phone && (
+                        <>
+                          <span>•</span>
+                          <a href={`https://wa.me/${m.phone}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-green-600 font-semibold">
+                            <MessageCircle size={12} /> WhatsApp
+                          </a>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-right flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase block">Paid</span>
+                      <span className="text-sm font-extrabold text-toloba-dark">
+                        ₹{mTotal.toLocaleString('en-IN')}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button 
+                        onClick={() => setSelectedLedgerMember(m)}
+                        className="px-2 py-1 bg-toloba/10 hover:bg-toloba/20 text-toloba-dark rounded-lg text-xs font-bold inline-flex items-center gap-1"
+                        title="View Payment Ledger"
+                      >
+                        <History size={13} /> <span>Ledger</span>
+                      </button>
+
+                      {canWrite && (
+                        <button 
+                          onClick={() => {
+                            setEditingMember(m);
+                            setFormData({ name: m.name, its_number: m.its_number, phone: m.phone || '' });
+                            setShowAddModal(true);
+                          }}
+                          className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold inline-flex items-center"
+                          title="Edit Member"
+                        >
+                          <Edit3 size={13} />
+                        </button>
+                      )}
+
+                      {canWrite && (
+                        <button 
+                          onClick={() => handleDeleteMember(m)}
+                          className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold inline-flex items-center"
+                          title="Delete Member"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Desktop View: Full Spreadsheet Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm whitespace-nowrap">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
@@ -330,36 +448,57 @@ export default function MembersManager({ members, receipts, user, canWrite, onRe
             </div>
 
             {/* Ledger Stats */}
-            <div className="p-6 bg-slate-50 border-b border-slate-200 grid grid-cols-2 gap-4">
-              <div className="bg-white p-4 rounded-xl border border-slate-200">
-                <p className="text-xs text-slate-400 font-semibold uppercase">Total Contributed</p>
-                <p className="text-2xl font-extrabold text-toloba-dark mt-1">₹{memberTotalPaid.toLocaleString('en-IN')}</p>
+            <div className="p-3.5 sm:p-6 bg-slate-50 border-b border-slate-200 grid grid-cols-3 gap-2 sm:gap-3">
+              <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 text-center">
+                <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">Total Paid</p>
+                <p className="text-sm sm:text-lg font-extrabold text-toloba-dark mt-0.5 sm:mt-1 truncate">₹{memberTotalPaid.toLocaleString('en-IN')}</p>
               </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200">
-                <p className="text-xs text-slate-400 font-semibold uppercase">Total Receipts Paid</p>
-                <p className="text-2xl font-extrabold text-slate-800 mt-1">{memberReceipts.filter(r => r.status !== 'void').length}</p>
+              <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 text-center">
+                <p className="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">Receipts</p>
+                <p className="text-sm sm:text-lg font-extrabold text-slate-800 mt-0.5 sm:mt-1 truncate">{memberReceipts.filter(r => r.status !== 'void').length}</p>
+              </div>
+              <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-amber-200 text-center shadow-2xs">
+                <p className="text-[9px] sm:text-[10px] text-amber-600 font-bold uppercase tracking-wider truncate">Dues Pending</p>
+                <p className="text-sm sm:text-lg font-extrabold text-amber-700 mt-0.5 sm:mt-1 truncate">₹{memberOutstandingDues.toLocaleString('en-IN')}</p>
               </div>
             </div>
 
-            {/* Receipt History Table */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <h4 className="text-sm font-bold text-slate-800 mb-3">Payment History Breakdown</h4>
-              {memberReceipts.length === 0 ? (
-                <p className="text-slate-400 text-sm italic">No payment receipts found for this member.</p>
+            {/* Passbook History Timeline */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50">
+              <h4 className="text-xs sm:text-sm font-bold text-slate-800 mb-3 sm:mb-4 flex items-center gap-2">
+                <History size={15} className="text-toloba" /> Financial Timeline
+              </h4>
+              
+              {passbookTimeline.length === 0 ? (
+                <div className="text-center py-10 bg-white rounded-xl border border-dashed border-slate-200">
+                  <p className="text-slate-400 text-xs sm:text-sm font-medium">No financial records found.</p>
+                </div>
               ) : (
-                <div className="space-y-3">
-                  {memberReceipts.map(r => (
-                    <div key={r.id} className="bg-white p-4 rounded-xl border border-slate-200 flex justify-between items-center shadow-sm">
-                      <div>
-                        <p className="font-mono font-bold text-toloba text-sm">{r.receipt_no}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">{r.period_month} {r.period_year} • Mode: {r.payment_mode}</p>
-                        <p className="text-[11px] text-slate-400">{new Date(r.created_at).toLocaleDateString('en-GB')}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-extrabold text-slate-900 text-base">₹{parseFloat(r.amount).toLocaleString('en-IN')}</p>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${r.status === 'void' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-800'}`}>
-                          {r.status?.toUpperCase() || 'VALID'}
-                        </span>
+                <div className="space-y-2.5 sm:space-y-3 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+                  {passbookTimeline.map(item => (
+                    <div key={item.id} className={`relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active`}>
+                      <div className="bg-white p-3 sm:p-4 rounded-xl border border-slate-200 flex justify-between items-center shadow-2xs w-full relative z-10 hover:shadow-xs transition-shadow">
+                        <div className="flex gap-2.5 sm:gap-3 items-center min-w-0">
+                          <div className={`w-1.5 sm:w-2 h-9 sm:h-10 rounded-full flex-shrink-0 ${item.isCredit ? 'bg-emerald-400' : 'bg-amber-400'}`}></div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-1.5 truncate">
+                              <span className="truncate">{item.title_display}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-bold tracking-wider flex-shrink-0 ${item.isCredit ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                                {item.type.toUpperCase()}
+                              </span>
+                            </p>
+                            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate" title={item.subtitle_display}>{item.subtitle_display}</p>
+                            <p className="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 font-medium">{item.date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+                          </div>
+                        </div>
+                        <div className="text-right pl-2 sm:pl-4 border-l border-slate-100 flex-shrink-0">
+                          <p className={`font-extrabold text-sm sm:text-base ${item.isCredit ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            {item.isCredit ? '+' : '-'} ₹{item.amount_display.toLocaleString('en-IN')}
+                          </p>
+                          <span className={`px-1.5 sm:px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold mt-0.5 inline-block ${item.status_display === 'VOID' ? 'bg-slate-100 text-slate-500' : item.isCredit ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                            {item.status_display}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   ))}

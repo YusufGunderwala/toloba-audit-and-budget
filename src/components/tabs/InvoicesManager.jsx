@@ -147,39 +147,39 @@ export default function InvoicesManager({ invoices, user, canWrite, onRefresh, s
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
       
       {/* Top Header */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-wrap gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm gap-4">
         <div>
           <h2 className="text-base font-bold text-slate-800">Invoicing & Bill Management ({filteredInvoices.length})</h2>
-          <p className="text-xs text-slate-400">Issue debit notes and track unpaid bills for stalls, sponsorships, or pledges</p>
+          <p className="text-xs text-slate-400 mt-0.5">Issue debit notes and track unpaid bills for stalls, sponsorships, or pledges</p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
           {canWrite && (
             <button 
               onClick={() => setShowForm(!showForm)} 
-              className="btn-primary text-xs font-bold py-2 px-3.5 flex items-center gap-1.5 shadow"
+              className="flex-1 sm:flex-none justify-center btn-primary text-xs font-bold py-2 px-3.5 flex items-center gap-1.5 shadow"
             >
-              <PlusCircle size={16} /> {showForm ? 'Close Form' : 'Generate New Invoice'}
+              <PlusCircle size={16} /> <span>{showForm ? 'Close Form' : 'Generate New Invoice'}</span>
             </button>
           )}
           <button 
             onClick={handleExportExcel}
-            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow"
+            className="flex-1 sm:flex-none justify-center px-3.5 py-2 bg-slate-800 hover:bg-slate-900 transition-all text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow"
           >
-            <FileSpreadsheet size={16} /> Export Invoices (.xlsx)
+            <FileSpreadsheet size={16} /> <span>Export (.xlsx)</span>
           </button>
         </div>
       </div>
 
       {/* ===== GENERATE INVOICE FORM ===== */}
       {showForm && canWrite && (
-        <div className="bg-white p-6 rounded-2xl border border-blue-200 shadow-xl max-w-2xl mx-auto">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-blue-200 shadow-xl max-w-2xl mx-auto">
           <h3 className="text-lg font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
             <FileText size={20} className="text-blue-600" /> New Bill / Invoice Entry
           </h3>
 
           <form onSubmit={handleCreateInvoice} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Client / Party Name</label>
                 <input 
@@ -205,7 +205,7 @@ export default function InvoicesManager({ invoices, user, canWrite, onRefresh, s
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Bill Particulars / Title</label>
                 <input 
@@ -235,7 +235,7 @@ export default function InvoicesManager({ invoices, user, canWrite, onRefresh, s
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Due Date</label>
                 <input 
@@ -251,7 +251,7 @@ export default function InvoicesManager({ invoices, user, canWrite, onRefresh, s
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-1">Client WhatsApp Phone</label>
                 <input 
                   type="tel" 
-                  className="input-field" 
+                  className="input-field font-mono" 
                   placeholder="e.g. 919876543210" 
                   value={formData.clientPhone} 
                   onChange={e => setFormData({...formData, clientPhone: e.target.value.replace(/\D/g, '')})} 
@@ -260,10 +260,10 @@ export default function InvoicesManager({ invoices, user, canWrite, onRefresh, s
             </div>
 
             <div className="pt-2 flex justify-end gap-3">
-              <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl">
+              <button type="button" onClick={() => setShowForm(false)} className="w-1/2 sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl">
                 Cancel
               </button>
-              <button type="submit" disabled={loading} className="btn-primary px-6 py-2 text-xs font-bold flex items-center gap-1.5">
+              <button type="submit" disabled={loading} className="w-1/2 sm:w-auto btn-primary px-6 py-2 text-xs font-bold flex items-center justify-center gap-1.5 shadow">
                 <CheckCircle2 size={16} /> {loading ? 'Saving...' : 'Generate Invoice'}
               </button>
             </div>
@@ -273,7 +273,86 @@ export default function InvoicesManager({ invoices, user, canWrite, onRefresh, s
 
       {/* ===== INVOICES TABLE ===== */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        
+        {/* Mobile View: Modern Invoices Cards (No Horizontal Scroll) */}
+        <div className="divide-y divide-slate-100 md:hidden">
+          {filteredInvoices.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-sm">No invoices found.</div>
+          ) : (
+            filteredInvoices.map(inv => (
+              <div key={inv.id} className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="font-mono text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      {inv.invoice_no}
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      Due: {new Date(inv.due_date).toLocaleDateString('en-GB')}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                      inv.status === 'paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {inv.status}
+                    </span>
+                  </div>
+
+                  <p className="font-bold text-slate-800 text-sm truncate">{inv.title}</p>
+
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1 flex-wrap">
+                    <span>Party: <span className="text-slate-600 font-semibold">{inv.client_name}</span></span>
+                    {inv.client_its && (
+                      <>
+                        <span>•</span>
+                        <span className="font-mono">ITS: {inv.client_its}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-right flex flex-col items-end gap-1.5 flex-shrink-0">
+                  <span className="text-base font-extrabold text-blue-600">
+                    ₹{parseFloat(inv.amount).toLocaleString('en-IN')}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {inv.client_phone && (
+                      <a 
+                        href={`https://wa.me/${inv.client_phone}?text=${encodeURIComponent(
+                          `*INVOICE NOTICE - TOLOBA UL KULLIYAAT IL MUMINOON*\n` +
+                          `━━━━━━━━━━━━━━━━━━━━\n` +
+                          `Invoice No: *${inv.invoice_no}*\n` +
+                          `Client: *${inv.client_name}*\n` +
+                          `Particulars: ${inv.title}\n` +
+                          `Amount Due: *₹${parseFloat(inv.amount).toLocaleString('en-IN')}*\n` +
+                          `Due Date: ${new Date(inv.due_date).toLocaleDateString('en-GB')}\n\n` +
+                          `Please clear the dues at your earliest convenience.`
+                        )}`} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="p-1.5 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-xs font-bold inline-flex items-center gap-1"
+                        title="WhatsApp Bill Reminder"
+                      >
+                        <MessageCircle size={14} /> <span className="text-[11px]">Send</span>
+                      </a>
+                    )}
+
+                    {canWrite && inv.status === 'unpaid' && (
+                      <button 
+                        onClick={() => handleMarkAsPaid(inv)}
+                        className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1 shadow"
+                        title="Mark as Paid"
+                      >
+                        <CheckCircle2 size={14} /> <span className="text-[11px]">Paid</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop View: Full Spreadsheet Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm whitespace-nowrap">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">

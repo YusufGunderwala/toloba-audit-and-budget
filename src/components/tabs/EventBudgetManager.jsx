@@ -178,16 +178,16 @@ export default function EventBudgetManager({ events, expenses, receipts, user, c
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
       
       {/* Top Header */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-col md:flex-row gap-4">
-        <div className="text-center md:text-left">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs gap-3 sm:gap-4">
+        <div>
           <h2 className="text-base font-bold text-slate-800">Event Budgeting & Cost Control ({events.length})</h2>
-          <p className="text-xs text-slate-400">Track allocated budget vs actual spending with event analytics</p>
+          <p className="text-xs text-slate-400 mt-0.5">Track allocated budget vs actual spending with event analytics</p>
         </div>
 
         {canWrite && (
           <button 
             onClick={() => setShowForm(!showForm)} 
-            className="btn-primary text-xs font-bold py-2 px-3.5 flex items-center justify-center gap-1.5 shadow w-full md:w-auto"
+            className="btn-primary text-xs font-bold py-2 px-3.5 flex items-center justify-center gap-1.5 shadow w-full sm:w-auto active:scale-95 transition-all"
           >
             <PlusCircle size={16} /> {showForm ? 'Close Form' : 'Create New Event'}
           </button>
@@ -387,34 +387,34 @@ export default function EventBudgetManager({ events, expenses, receipts, user, c
             </div>
 
             {/* Quick Metrics Bar */}
-            <div className="p-6 bg-slate-50 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-white p-4 rounded-xl border border-slate-200">
-                <p className="text-[11px] text-slate-400 font-bold uppercase">Budget Limit</p>
-                <p className="text-xl font-extrabold text-slate-900 mt-1">₹{eventBudget.toLocaleString('en-IN')}</p>
+            <div className="p-4 sm:p-6 bg-slate-50 border-b border-slate-200 grid grid-cols-3 gap-2 sm:gap-4">
+              <div className="bg-white p-2.5 sm:p-4 rounded-xl border border-slate-200 text-center sm:text-left">
+                <p className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase truncate">Budget Limit</p>
+                <p className="text-sm sm:text-xl font-extrabold text-slate-900 mt-0.5 sm:mt-1 truncate">₹{eventBudget.toLocaleString('en-IN')}</p>
               </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200">
-                <p className="text-[11px] text-slate-400 font-bold uppercase">Total Spent</p>
-                <p className="text-xl font-extrabold text-red-600 mt-1">₹{eventSpentTotal.toLocaleString('en-IN')}</p>
+              <div className="bg-white p-2.5 sm:p-4 rounded-xl border border-slate-200 text-center sm:text-left">
+                <p className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase truncate">Total Spent</p>
+                <p className="text-sm sm:text-xl font-extrabold text-red-600 mt-0.5 sm:mt-1 truncate">₹{eventSpentTotal.toLocaleString('en-IN')}</p>
               </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200">
-                <p className="text-[11px] text-slate-400 font-bold uppercase">Surplus / Deficit</p>
-                <p className={`text-xl font-extrabold mt-1 ${eventBalance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+              <div className="bg-white p-2.5 sm:p-4 rounded-xl border border-slate-200 text-center sm:text-left">
+                <p className="text-[10px] sm:text-[11px] text-slate-400 font-bold uppercase truncate">Surplus/Deficit</p>
+                <p className={`text-sm sm:text-xl font-extrabold mt-0.5 sm:mt-1 truncate ${eventBalance < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                   ₹{eventBalance.toLocaleString('en-IN')}
                 </p>
               </div>
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6">
               
               {/* Export Buttons */}
-              <div className="flex justify-between items-center bg-blue-50 p-4 rounded-xl border border-blue-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-blue-50/80 p-3.5 sm:p-4 rounded-xl border border-blue-200/80">
                 <p className="text-xs font-bold text-blue-900">Export Event Financial Report</p>
-                <div className="flex gap-2">
-                  <button onClick={exportEventExcel} className="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1">
+                <div className="flex gap-2 w-full sm:w-auto">
+                  <button onClick={exportEventExcel} className="flex-1 sm:flex-initial justify-center px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center gap-1 active:scale-95 transition-all">
                     <FileSpreadsheet size={14} /> Excel
                   </button>
-                  <button onClick={exportEventPDF} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1">
+                  <button onClick={exportEventPDF} className="flex-1 sm:flex-initial justify-center px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 active:scale-95 transition-all">
                     <FileText size={14} /> PDF
                   </button>
                 </div>

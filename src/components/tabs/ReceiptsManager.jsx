@@ -1,6 +1,7 @@
 import toast from 'react-hot-toast';
 import React, { useState, useMemo } from 'react';
 import CustomSelect from '../ui/CustomSelect';
+import DateRangePicker from '../ui/DateRangePicker';
 import { 
   PlusCircle, 
   Printer, 
@@ -14,11 +15,21 @@ import {
   Banknote,
   Smartphone,
   RefreshCw,
-  XCircle
+  XCircle,
+  Calendar,
+  CalendarDays,
+  RotateCcw,
+  Filter
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { exportToExcel } from '../../lib/exportUtils';
 import { logAuditEvent } from '../../lib/auditLogger';
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+const YEARS = ['2024', '2025', '2026', '2027', '2028'];
 
 // Helper: Convert number to words for receipt
 function numberToWords(num) {
@@ -60,18 +71,67 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
     remarks: ''
   });
 
+  // Filter States: 'all' | 'month' | 'custom_date'
+  const [filterType, setFilterType] = useState('all');
+  const [filterMonth, setFilterMonth] = useState('ALL');
+  const [filterYear, setFilterYear] = useState('2026');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [filterPaymentMode, setFilterPaymentMode] = useState('ALL');
+
   // Filter receipts
   const filteredReceipts = useMemo(() => {
     return receipts.filter(r => {
-      if (!searchTerm) return true;
-      const term = searchTerm.toLowerCase();
-      return (
-        r.receipt_no?.toLowerCase().includes(term) ||
-        r.members?.name?.toLowerCase().includes(term) ||
-        r.members?.its_number?.includes(term)
-      );
+      // 1. Text Search Filter (Receipt No, Member Name, ITS)
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const matchesSearch = 
+          r.receipt_no?.toLowerCase().includes(term) ||
+          r.members?.name?.toLowerCase().includes(term) ||
+          r.members?.its_number?.includes(term);
+        if (!matchesSearch) return false;
+      }
+
+      // 2. Payment Mode Filter
+      if (filterPaymentMode !== 'ALL' && r.payment_mode !== filterPaymentMode) {
+        return false;
+      }
+
+      // 3. Month / Date Range Filter
+      if (filterType === 'month') {
+        if (filterYear !== 'ALL') {
+          const rYear = r.period_year || (r.created_at ? new Date(r.created_at).getFullYear().toString() : '');
+          if (rYear !== filterYear) return false;
+        }
+        if (filterMonth !== 'ALL') {
+          const rMonth = r.period_month;
+          const createdMonth = r.created_at ? new Date(r.created_at).toLocaleString('en-US', { month: 'long' }) : '';
+          if (rMonth !== filterMonth && createdMonth !== filterMonth) {
+            return false;
+          }
+        }
+      } else if (filterType === 'custom_date') {
+        if (startDate || endDate) {
+          const rDate = new Date(r.created_at);
+          const y = rDate.getFullYear();
+          const m = String(rDate.getMonth() + 1).padStart(2, '0');
+          const d = String(rDate.getDate()).padStart(2, '0');
+          const localDateStr = `${y}-${m}-${d}`;
+
+          if (startDate && localDateStr < startDate) return false;
+          if (endDate && localDateStr > endDate) return false;
+        }
+      }
+
+      return true;
     });
-  }, [receipts, searchTerm]);
+  }, [receipts, searchTerm, filterType, filterMonth, filterYear, startDate, endDate, filterPaymentMode]);
+
+  const filteredTotalAmount = useMemo(() => {
+    return filteredReceipts
+      .filter(r => r.status !== 'void')
+      .reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+  }, [filteredReceipts]);
 
   // Handle Receipt Creation
   const handleCreateReceipt = async (e) => {
@@ -183,6 +243,15 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
   };
 
   const handleExportExcel = () => {
+    let filename = 'Toloba_Lawazam_Receipts';
+    if (filterType === 'month') {
+      const mStr = filterMonth !== 'ALL' ? filterMonth : 'AllMonths';
+      const yStr = filterYear !== 'ALL' ? filterYear : 'AllYears';
+      filename = `Toloba_Receipts_${mStr}_${yStr}`;
+    } else if (filterType === 'custom_date' && (startDate || endDate)) {
+      filename = `Toloba_Receipts_${startDate || 'Start'}_to_${endDate || 'Today'}`;
+    }
+
     const exportData = filteredReceipts.map(r => ({
       'Receipt No': r.receipt_no,
       'Member Name': r.members?.name || 'N/A',
@@ -194,49 +263,286 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
       'Status': r.status,
       'Date': new Date(r.created_at).toLocaleDateString('en-GB')
     }));
-    exportToExcel(exportData, 'Toloba_Lawazam_Receipts');
+    exportToExcel(exportData, filename);
   };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
       
-      {/* Top Action Bar */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-col md:flex-row gap-4">
-        <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-          <button 
-            onClick={() => setViewMode('list')} 
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${viewMode === 'list' ? 'bg-toloba text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            All Receipts ({filteredReceipts.length})
-          </button>
-          {canWrite && (
+      {/* Top Action & Filter Bar */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3.5">
+        
+        {/* Row 1: Action Tabs & Export Button (Always side-by-side) */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto pb-0.5">
             <button 
               onClick={() => {
-                setFormData({
-                  memberId: '', amount: '', mode: 'Cash',
-                  periodMonth: 'January', periodYear: '2026', transactionId: '', remarks: ''
-                });
-                setViewMode('create');
+                setViewMode('list');
+                setFilterType('all');
+                setFilterMonth('ALL');
+                setFilterYear('2026');
+                setStartDate('');
+                setEndDate('');
+                setFilterPaymentMode('ALL');
               }} 
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${viewMode === 'create' ? 'bg-toloba text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap active:scale-95 ${
+                viewMode === 'list' && filterType === 'all' && filterPaymentMode === 'ALL'
+                  ? 'bg-toloba text-white shadow-sm shadow-emerald-900/20' 
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
             >
-              <PlusCircle size={14} /> New Receipt
+              All Receipts ({receipts.length})
             </button>
-          )}
+            {canWrite && (
+              <button 
+                onClick={() => {
+                  setFormData({
+                    memberId: '', amount: '', mode: 'Cash',
+                    periodMonth: 'January', periodYear: '2026', transactionId: '', remarks: ''
+                  });
+                  setViewMode('create');
+                }} 
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
+                  viewMode === 'create' ? 'bg-toloba text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <PlusCircle size={14} /> New Receipt
+              </button>
+            )}
+          </div>
+
+          <button 
+            onClick={handleExportExcel}
+            className="px-3 sm:px-4 py-2 bg-slate-900 hover:bg-slate-800 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all border border-slate-800 flex-shrink-0"
+            title="Export to Excel"
+          >
+            <FileSpreadsheet size={14} className="text-emerald-400" /> 
+            <span className="hidden sm:inline">Export</span>
+            <span className="sm:hidden text-xs">Excel</span>
+          </button>
         </div>
 
-        <button 
-          onClick={handleExportExcel}
-          className="px-4 py-2 bg-slate-800 hover:bg-slate-900 transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow w-full md:w-auto"
-        >
-          <FileSpreadsheet size={16} /> Export
-        </button>
+        {/* Row 2: Filter Controls (Visible in List View) */}
+        {viewMode === 'list' && (
+          <div className="pt-3 border-t border-slate-100 space-y-2.5">
+            
+            {/* Filter Pills Grid (Full width on mobile, snug on desktop) */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+              
+              {/* Filter Type Segmented Control */}
+              <div className="grid grid-cols-3 sm:flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setFilterType('all')}
+                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all text-center active:scale-95 ${
+                    filterType === 'all'
+                      ? 'bg-white text-toloba-dark shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All Time
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('month')}
+                  className={`py-1.5 px-2.5 sm:px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 text-center active:scale-95 ${
+                    filterType === 'month'
+                      ? 'bg-white text-toloba shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Calendar size={13} /> <span>Month</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterType('custom_date')}
+                  className={`py-1.5 px-2 sm:px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 text-center active:scale-95 ${
+                    filterType === 'custom_date'
+                      ? 'bg-white text-toloba shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <CalendarDays size={13} /> <span>Custom</span>
+                </button>
+              </div>
+
+              {/* Mode Pills & Reset Control */}
+              <div className="flex items-center justify-between sm:justify-end gap-2">
+                <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
+                  {['ALL', 'Cash', 'UPI'].map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setFilterPaymentMode(m)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 ${
+                        filterPaymentMode === m
+                          ? 'bg-white text-toloba shadow-xs'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {m === 'ALL' ? 'All Modes' : m}
+                    </button>
+                  ))}
+                </div>
+
+                {(filterType !== 'all' || filterPaymentMode !== 'ALL' || filterMonth !== 'ALL' || filterYear !== '2026' || startDate || endDate) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFilterType('all');
+                      setFilterMonth('ALL');
+                      setFilterYear('2026');
+                      setStartDate('');
+                      setEndDate('');
+                      setFilterPaymentMode('ALL');
+                    }}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 border border-rose-200/80 rounded-xl text-xs font-bold transition-all active:scale-95"
+                    title="Reset Filters"
+                  >
+                    <RotateCcw size={12} />
+                    <span>Reset</span>
+                  </button>
+                )}
+              </div>
+
+            </div>
+
+            {/* Sub-row: If Month-wise is active */}
+            {filterType === 'month' && (
+              <div className="p-2.5 bg-emerald-50/70 rounded-xl border border-emerald-100/80 animate-in fade-in duration-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                <span className="text-[10px] font-bold text-toloba-dark uppercase tracking-wider flex items-center gap-1">
+                  <Calendar size={12} /> Select Month & Year:
+                </span>
+                <div className="grid grid-cols-2 sm:flex items-center gap-2 flex-1">
+                  <CustomSelect
+                    value={filterMonth}
+                    onChange={e => setFilterMonth(e.target.value)}
+                    className="w-full sm:w-36 px-3 py-1.5 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-slate-800 shadow-2xs"
+                    options={[
+                      { value: 'ALL', label: 'All Months' },
+                      ...MONTHS.map(m => ({ value: m, label: m }))
+                    ]}
+                  />
+
+                  <CustomSelect
+                    value={filterYear}
+                    onChange={e => setFilterYear(e.target.value)}
+                    className="w-full sm:w-28 px-3 py-1.5 bg-white border border-emerald-200 rounded-xl text-xs font-bold text-slate-800 shadow-2xs"
+                    options={[
+                      { value: 'ALL', label: 'All Years' },
+                      ...YEARS.map(y => ({ value: y, label: y }))
+                    ]}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Sub-row: If Custom Dates is active */}
+            {filterType === 'custom_date' && (
+              <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-100/90 animate-in fade-in duration-200">
+                <DateRangePicker
+                  startDate={startDate}
+                  endDate={endDate}
+                  onDateChange={({ startDate: s, endDate: e }) => {
+                    setStartDate(s);
+                    setEndDate(e);
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Filter Summary Banner */}
+            {(filterType !== 'all' || filterPaymentMode !== 'ALL' || searchTerm) && (
+              <div className="flex items-center justify-between gap-1.5 text-xs bg-toloba/5 border border-toloba/15 rounded-xl px-3 py-1.5 animate-in fade-in duration-150">
+                <span className="text-toloba-dark font-medium truncate">
+                  Filtered:{' '}
+                  <strong className="font-bold">
+                    {filterType === 'month' 
+                      ? `${filterMonth === 'ALL' ? 'All Months' : filterMonth} ${filterYear === 'ALL' ? '' : filterYear}`
+                      : filterType === 'custom_date' 
+                        ? `${startDate || 'Start'} ➔ ${endDate || 'Today'}`
+                        : 'All Time'}
+                  </strong>
+                  {filterPaymentMode !== 'ALL' && ` • ${filterPaymentMode}`}
+                </span>
+                <span className="font-bold text-toloba-dark flex-shrink-0">
+                  {filteredReceipts.length} ({`₹${filteredTotalAmount.toLocaleString('en-IN')}`})
+                </span>
+              </div>
+            )}
+
+          </div>
+        )}
+
       </div>
 
       {/* ===== LIST VIEW ===== */}
       {viewMode === 'list' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          
+          {/* Mobile View: Clean Receipt Cards (No Horizontal Scroll) */}
+          <div className="divide-y divide-slate-100 md:hidden">
+            {filteredReceipts.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 text-sm">No receipts found.</div>
+            ) : (
+              filteredReceipts.map(r => (
+                <div key={r.id} className={`p-4 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors ${r.status === 'void' ? 'bg-red-50/40 opacity-70' : ''}`}>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="font-mono text-[10px] font-bold text-toloba bg-toloba/10 px-2 py-0.5 rounded border border-toloba/20">
+                        {r.receipt_no}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        {new Date(r.created_at).toLocaleDateString('en-GB')}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${r.status === 'void' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-800'}`}>
+                        {r.status?.toUpperCase() || 'VALID'}
+                      </span>
+                    </div>
+
+                    <p className="font-bold text-slate-800 text-sm truncate">{r.members?.name || 'N/A'}</p>
+
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1 flex-wrap">
+                      <span className="font-mono text-slate-500">ITS: {r.members?.its_number || '---'}</span>
+                      <span>•</span>
+                      <span>{r.period_month} {r.period_year}</span>
+                      <span>•</span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${r.payment_mode === 'Cash' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-blue-50 text-blue-700 border border-blue-200'}`}>
+                        {r.payment_mode}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-right flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <span className="text-base font-extrabold text-slate-900">
+                      ₹{parseFloat(r.amount).toLocaleString('en-IN')}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button 
+                        onClick={() => { setSelectedReceipt(r); setViewMode('print'); }}
+                        className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors inline-flex items-center gap-1 text-xs font-bold"
+                        title="View / Print Receipt"
+                      >
+                        <Eye size={14} />
+                      </button>
+                      {canWrite && r.status !== 'void' && (
+                        <button 
+                          onClick={() => handleVoidReceipt(r)}
+                          className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors inline-flex items-center gap-1 text-xs font-bold"
+                          title="Void Receipt"
+                        >
+                          <Ban size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Desktop View: Full Spreadsheet Table */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm whitespace-nowrap">
               <thead>
                 <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
@@ -344,7 +650,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 mb-2">Payment Mode</label>
                 <div className="flex gap-3">
@@ -417,12 +723,12 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
       {/* ===== PRINT VIEW ===== */}
       {viewMode === 'print' && selectedReceipt && (
         <div className="max-w-3xl mx-auto">
-          <div className="mb-6 flex justify-between items-center no-print">
-            <button onClick={() => setViewMode('list')} className="text-slate-600 hover:text-slate-900 font-bold text-xs flex items-center gap-2">
+          <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
+            <button onClick={() => setViewMode('list')} className="text-slate-600 hover:text-slate-900 font-bold text-xs flex items-center gap-2 self-start">
               ← Back to Receipts List
             </button>
             
-            <div className="flex gap-3">
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
               {selectedReceipt.members?.phone && (
                 <a 
                   href={`https://wa.me/${selectedReceipt.members.phone}?text=${encodeURIComponent(
@@ -443,13 +749,13 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
                   )}`} 
                   target="_blank" 
                   rel="noreferrer" 
-                  className="btn-primary flex items-center gap-2 bg-green-600 hover:bg-green-700 text-xs shadow-md shadow-green-600/20"
+                  className="btn-primary flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-xs shadow-md shadow-green-600/20 py-2.5 px-4"
                 >
-                  <MessageCircle size={16} /> Send to WhatsApp
+                  <MessageCircle size={16} /> Send WhatsApp
                 </a>
               )}
 
-              <button onClick={() => window.print()} className="btn-primary flex items-center gap-2 bg-slate-800 hover:bg-slate-900 transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-xs shadow-md">
+              <button onClick={() => window.print()} className="btn-primary flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 transition-all text-xs shadow-md py-2.5 px-4">
                 <Printer size={16} /> Print / Download PDF
               </button>
             </div>
@@ -459,23 +765,23 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
           <div id="printable-receipt" className="bg-white border border-slate-200 shadow-2xl rounded-xl relative overflow-hidden" style={{fontFamily: "'Inter', sans-serif"}}>
             
             {/* Header Banner */}
-            <div className="bg-toloba px-8 py-6 flex items-center justify-between text-white">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-xl overflow-hidden shadow-lg flex-shrink-0 border border-white/20 bg-white p-1">
+            <div className="bg-toloba px-4 sm:px-8 py-4 sm:py-6 flex items-center justify-between text-white">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl overflow-hidden shadow-lg flex-shrink-0 border border-white/20 bg-white p-1">
                   <img src="/TolobaLogoAnand-transparent.png" alt="Logo" className="w-full h-full object-contain" />
                 </div>
                 <div>
-                  <h1 className="text-xl font-extrabold tracking-wide">TOLOBA UL KULLIYAAT IL MUMINOON (ANAND)</h1>
-                  <p className="text-white/70 text-xs font-medium mt-0.5">Treasury Committee</p>
+                  <h1 className="text-sm sm:text-xl font-extrabold tracking-wide">TOLOBA UL KULLIYAAT IL MUMINOON</h1>
+                  <p className="text-white/70 text-[10px] sm:text-xs font-medium mt-0.5">Anand Treasury Committee</p>
                 </div>
               </div>
             </div>
 
             {/* Meta Row */}
-            <div className="px-8 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center text-xs">
-              <div className="flex gap-6">
-                <p className="text-slate-600">Receipt No: <span className="font-bold text-toloba-dark text-sm">{selectedReceipt.receipt_no}</span></p>
-                <p className="text-slate-600">Date: <span className="font-bold text-slate-800">{new Date(selectedReceipt.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</span></p>
+            <div className="px-4 sm:px-8 py-2.5 sm:py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2 text-xs">
+              <div className="flex gap-4 sm:gap-6 flex-wrap">
+                <p className="text-slate-600">Receipt No: <span className="font-bold text-toloba-dark text-xs sm:text-sm">{selectedReceipt.receipt_no}</span></p>
+                <p className="text-slate-600">Date: <span className="font-bold text-slate-800">{new Date(selectedReceipt.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span></p>
               </div>
               <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${selectedReceipt.status === 'void' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-800'}`}>
                 {selectedReceipt.status === 'void' ? 'VOIDED' : 'OFFICIAL RECEIPT'}
@@ -483,7 +789,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
             </div>
 
             {/* Receipt Body */}
-            <div className="px-8 py-6 relative z-10">
+            <div className="px-4 sm:px-8 py-4 sm:py-6 relative z-10">
               
               <table className="w-full border-collapse text-xs mb-6">
                 <tbody>

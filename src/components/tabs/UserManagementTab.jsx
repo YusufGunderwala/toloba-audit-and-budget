@@ -209,34 +209,90 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
       
       {/* Top Header */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-wrap gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm gap-4">
         <div>
           <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-            <ShieldCheck size={20} className="text-toloba" /> User Access & Password Manager ({usersList.length})
+            <ShieldCheck size={20} className="text-toloba flex-shrink-0" /> User Access & Password Manager ({usersList.length})
           </h2>
-          <p className="text-xs text-slate-400">Super Admin Control Center: Reset user passwords and assign system roles</p>
+          <p className="text-xs text-slate-400 mt-0.5">Super Admin Control Center: Reset user passwords and assign system roles</p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
           <button 
             onClick={() => setShowCreateUser(true)} 
-            className="btn-primary flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow"
+            className="flex-1 sm:flex-none justify-center btn-primary flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow"
           >
-            <UserPlus size={14} /> Create New User
+            <UserPlus size={15} /> <span>Create User</span>
           </button>
           <button 
             onClick={fetchUsers} 
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
+            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-200"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh List
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> <span>Refresh</span>
           </button>
         </div>
       </div>
 
       {/* Users Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        
+        {/* Mobile View: Modern User Cards (No Horizontal Scroll) */}
+        <div className="divide-y divide-slate-100 md:hidden">
+          {usersList.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 text-sm">No users found.</div>
+          ) : (
+            usersList.map(u => (
+              <div key={u.id} className="p-4 space-y-3 hover:bg-slate-50/60 transition-colors">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-full bg-toloba/10 text-toloba-dark font-bold flex items-center justify-center text-xs flex-shrink-0">
+                      {(u.display_name || 'U').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-bold text-slate-900 text-sm truncate">{u.display_name || 'User'}</p>
+                      <p className="text-[10px] text-slate-400 font-mono truncate">ID: {u.user_id ? `${u.user_id.slice(0, 8)}...` : 'N/A'}</p>
+                    </div>
+                  </div>
+
+                  <div className="w-28 sm:w-32 flex-shrink-0">
+                    <CustomSelect 
+                      value={u.role} 
+                      onChange={e => handleChangeRole(u, e.target.value)}
+                      className={`text-[11px] font-bold px-2 py-1.5 rounded-lg border outline-none cursor-pointer ${
+                        u.role === 'super_admin' ? 'bg-red-50 text-red-700 border-red-200' :
+                        u.role === 'treasurer' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        'bg-blue-50 text-blue-700 border-blue-200'
+                      }`}
+                      options={[
+                        { value: 'super_admin', label: 'Super Admin' },
+                        { value: 'treasurer', label: 'Treasurer' },
+                        { value: 'viewer', label: 'Auditor' }
+                      ]}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-slate-50 text-xs">
+                  <span className="text-[11px] text-slate-400 font-medium">Added: {new Date(u.created_at).toLocaleDateString('en-GB')}</span>
+                  <button 
+                    onClick={() => {
+                      setSelectedUserForReset(u);
+                      setNewPassword('');
+                      setStatusMsg('');
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 transition-all text-white rounded-lg text-[11px] font-bold inline-flex items-center gap-1.5 shadow"
+                  >
+                    <KeyRound size={13} /> Reset Password
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop View: Full Spreadsheet Table */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-left border-collapse text-sm">
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
