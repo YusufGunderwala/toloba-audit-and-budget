@@ -43,6 +43,7 @@ function DashboardOverview({ receipts = [], expenses = [], income = [], setActiv
   const netSurplus = (Math.round(totalIncome * 100) - Math.round(totalExpense * 100)) / 100;
   const cashIncome = sum(allIncome.filter(entry => entry.payment_mode === 'Cash'));
   const upiIncome = sum(allIncome.filter(entry => entry.payment_mode === 'UPI'));
+  const otherPaymentIncome = sum(allIncome.filter(entry => !['Cash', 'UPI'].includes(entry.payment_mode)));
   const totalOtherIncome = sum(otherIncome);
 
   const monthFormatter = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -137,10 +138,11 @@ function DashboardOverview({ receipts = [], expenses = [], income = [], setActiv
               <TrendingUp size={16} />
             </div>
           </div>
-          <div className="mt-2.5 sm:mt-4 flex items-center gap-1.5 text-[10px] sm:text-xs font-semibold text-slate-500 border-t border-slate-100 pt-2 sm:pt-2.5 truncate">
+          <div className="mt-2.5 sm:mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] sm:text-xs font-semibold text-slate-500 border-t border-slate-100 pt-2 sm:pt-2.5">
             <span className="text-emerald-700 font-bold">₹{cashIncome.toLocaleString('en-IN')} Cash</span>
             <span>•</span>
             <span className="text-blue-700 font-bold">₹{upiIncome.toLocaleString('en-IN')} UPI</span>
+            {otherPaymentIncome > 0 && <span>₹{otherPaymentIncome.toLocaleString('en-IN')} Other payments</span>}
           </div>
         </div>
 

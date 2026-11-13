@@ -11,7 +11,8 @@ import TreasuryLoader from './ui/TreasuryLoader';
 // Allow two complete 2.4-second coin animations on dashboard entry.
 const MINIMUM_LOADER_MS = 4800;
 
-const DashboardOverview = lazy(() => import('./tabs/DashboardOverview'));
+const loadDashboardOverview = () => import('./tabs/DashboardOverview');
+const DashboardOverview = lazy(loadDashboardOverview);
 const ReceiptsManager = lazy(() => import('./tabs/ReceiptsManager'));
 const MembersManager = lazy(() => import('./tabs/MembersManager'));
 const ExpensesManager = lazy(() => import('./tabs/ExpensesManager'));
@@ -113,6 +114,8 @@ export default function Dashboard({ user, userRole, onLogout }) {
 
   useEffect(() => {
     fetchData();
+    // Download the first view during the intro so it is ready when the loader ends.
+    loadDashboardOverview().catch(() => {});
     return () => {
       requestVersion.current += 1;
       pending.current = false;

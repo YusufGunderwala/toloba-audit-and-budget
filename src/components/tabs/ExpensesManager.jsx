@@ -56,12 +56,13 @@ function ExpensesManager({ expenses, events, canWrite, onRefresh, searchTerm }) 
 
   const handleCreateExpense = async (e) => {
     e.preventDefault();
+    if (!canWrite || loading) return;
     setLoading(true);
 
     try {
       const { error } = await supabase.from('expenses').insert([
         {
-          title: formData.title,
+          title: formData.title.trim(),
           amount: parseFloat(formData.amount),
           category: formData.category,
           payment_mode: formData.paymentMode,
@@ -181,7 +182,9 @@ function ExpensesManager({ expenses, events, canWrite, onRefresh, searchTerm }) 
                   <input 
                     type="number" 
                     required 
-                    min="1" 
+                    min="0.01"
+                    max="9999999999.99"
+                    step="0.01"
                     className="input-field pl-9 font-extrabold" 
                     placeholder="0.00" 
                     value={formData.amount} 

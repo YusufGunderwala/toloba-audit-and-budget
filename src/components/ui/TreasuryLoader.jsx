@@ -1,20 +1,25 @@
 import './TreasuryLoader.css';
 
+const sparkAngles = [-154, -132, -111, -90, -69, -48, -26];
+
 export default function TreasuryLoader({ label = 'Loading treasury data…' }) {
   return (
     <div role="status" className="grid min-h-full place-items-center py-4">
       <div className="grid w-full justify-items-center text-center">
         <div className="treasury-loader-scene" aria-hidden="true">
+          <span className="treasury-loader-halo" />
           <span className="treasury-loader-orbit" />
-          <span className="treasury-loader-coin"><span>₹</span></span>
+          <span className="treasury-loader-coin-path">
+            <span className="treasury-loader-coin"><span>₹</span></span>
+          </span>
           <span className="treasury-loader-box">
-            <span className="treasury-loader-slot" />
+            <span className="treasury-loader-lid" />
             <span className="treasury-loader-lamp" />
           </span>
           <span className="treasury-loader-ripple" />
           <span className="treasury-loader-sparks">
-            {[0, 1, 2, 3, 4, 5, 6, 7].map(index => (
-              <i key={index} style={{ '--spark-angle': `${index * 45}deg` }} />
+            {sparkAngles.map((angle, index) => (
+              <i key={angle} style={{ '--spark-angle': `${angle}deg`, '--spark-travel': `${18 + (index % 3) * 4}cqw` }} />
             ))}
           </span>
         </div>

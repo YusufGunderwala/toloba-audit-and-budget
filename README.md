@@ -18,3 +18,5 @@ React and Vite frontend backed by Supabase Auth and Postgres.
 Receipts and other income can be recorded through the current date in Anand. The receipt date is distinct from the date the entry was created. On browsers with native file sharing, choose WhatsApp from the share menu. Elsewhere the app downloads the PDF for attachment to a chat.
 
 Audit exports belong in the ignored `private-exports/` folder. The earlier tracked workbook is still present in historical Git commits.
+
+For an existing deployment with the treasury migration already applied, run `supabase/migrations/20261114000300_treasury_integrity_checks.sql` once to add the new write checks. Deploy the updated `manage-treasury-users` function and build the frontend with `npm ci` and `npm run build`.

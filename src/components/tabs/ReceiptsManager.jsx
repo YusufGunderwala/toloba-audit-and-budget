@@ -190,7 +190,7 @@ function ReceiptsManager({ receipts, members, canWrite, onRefresh, searchTerm })
         member_id: formData.memberId,
         amount: formData.amount,
         payment_mode: formData.mode,
-        transaction_id: formData.mode === 'UPI' ? formData.transactionId : null,
+        transaction_id: formData.mode === 'UPI' ? formData.transactionId.trim() : null,
         period_month: formData.periodMonth,
         period_year: formData.periodYear,
         remarks: formData.remarks || null
@@ -275,7 +275,7 @@ function ReceiptsManager({ receipts, members, canWrite, onRefresh, searchTerm })
                 setViewMode('list');
                 setFilterType('all');
                 setFilterMonth('ALL');
-                setFilterYear('2026');
+                setFilterYear(String(currentYear));
                 setStartDate('');
                 setEndDate('');
                 setFilterPaymentMode('ALL');
@@ -380,13 +380,13 @@ function ReceiptsManager({ receipts, members, canWrite, onRefresh, searchTerm })
                   ))}
                 </div>
 
-                {(filterType !== 'all' || filterPaymentMode !== 'ALL' || filterMonth !== 'ALL' || filterYear !== '2026' || startDate || endDate) && (
+                {(filterType !== 'all' || filterPaymentMode !== 'ALL' || filterMonth !== 'ALL' || filterYear !== String(currentYear) || startDate || endDate) && (
                   <button
                     type="button"
                     onClick={() => {
                       setFilterType('all');
                       setFilterMonth('ALL');
-                      setFilterYear('2026');
+                      setFilterYear(String(currentYear));
                       setStartDate('');
                       setEndDate('');
                       setFilterPaymentMode('ALL');

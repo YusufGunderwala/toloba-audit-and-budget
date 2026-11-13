@@ -10,4 +10,3 @@ export function useVisibleRows(rows) {
     remaining: Math.max(0, rows.length - limit)
   };
 }
-

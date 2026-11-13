@@ -33,12 +33,17 @@ function EventBudgetManager({ events, expenses, canWrite, onRefresh }) {
 
   const handleCreateEvent = async (e) => {
     e.preventDefault();
+    if (!canWrite || loading) return;
+    if (formData.startDate && formData.endDate && formData.endDate < formData.startDate) {
+      toast.error('The event end date must be on or after the start date.');
+      return;
+    }
     setLoading(true);
 
     try {
       const { error } = await supabase.from('events').insert([
         {
-          event_name: formData.eventName,
+          event_name: formData.eventName.trim(),
           budget_amount: parseFloat(formData.budgetAmount),
           start_date: formData.startDate || null,
           end_date: formData.endDate || null,
@@ -226,7 +231,9 @@ function EventBudgetManager({ events, expenses, canWrite, onRefresh }) {
                   <input 
                     type="number" 
                     required 
-                    min="1" 
+                    min="0.01"
+                    max="9999999999.99"
+                    step="0.01"
                     className="input-field pl-9 font-extrabold text-base" 
                     placeholder="50000" 
                     value={formData.budgetAmount} 

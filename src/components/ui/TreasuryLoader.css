@@ -1,141 +1,230 @@
 .treasury-loader-scene {
+  --cycle: 2.4s;
+  --impact-y: 61%;
   position: relative;
-  width: min(100%, clamp(13rem, 64vmin, 29rem));
+  width: min(100%, clamp(13rem, 64vmin, 29rem), max(12rem, 62svh));
   aspect-ratio: 25 / 17;
   container-type: inline-size;
   isolation: isolate;
-  perspective: 640px;
-  --cycle: 2.4s;
+  pointer-events: none;
+}
+
+.treasury-loader-halo {
+  position: absolute;
+  inset: 7% 7% 5%;
+  background: radial-gradient(ellipse, #23986c26, transparent 67%);
 }
 
 .treasury-loader-orbit {
   position: absolute;
-  inset: 12% 16% 18%;
-  border: 2px dashed #17634855;
+  inset: 18% 12% 17%;
+  border: 1px solid #17634840;
+  border-inline-color: #1763480f;
   border-radius: 50%;
-  transform: rotateX(56deg) rotate(0);
+  transform: rotateX(52deg) rotate(16deg);
   animation: treasury-orbit var(--cycle) linear infinite;
 }
 
-.treasury-loader-coin {
+.treasury-loader-coin-path {
   position: absolute;
-  top: 12%;
-  left: 41%;
+  top: var(--impact-y);
+  left: 50%;
   display: grid;
-  width: 18%;
-  aspect-ratio: 1;
-  place-items: center;
-  border: 2px solid #ba7c22;
+  width: 18cqw;
+  height: 18cqw;
+  margin: -9cqw 0 0 -9cqw;
+  transform: translateY(-25cqw);
+  perspective: 120cqw;
+  animation: treasury-coin-path var(--cycle) both infinite;
+}
+
+.treasury-loader-coin,
+.treasury-loader-coin::before,
+.treasury-loader-coin::after,
+.treasury-loader-coin > span {
+  position: absolute;
+  inset: 0;
   border-radius: 50%;
-  background: #f4ce76;
-  box-shadow: inset 0 0 0 3px #ffe3a0, 0 0 1rem #ffd86a77;
-  color: #55380e;
+}
+
+.treasury-loader-coin {
+  background: #906019;
+  transform-style: preserve-3d;
+  animation: treasury-coin-spin var(--cycle) linear infinite;
+}
+
+.treasury-loader-coin::before,
+.treasury-loader-coin::after,
+.treasury-loader-coin > span {
+  border: max(1px, 0.55cqw) solid #9c6420;
+  background: linear-gradient(145deg, #ffeba6, #eeb952 56%, #bc791f);
+  box-shadow: inset 0 0 0 0.65cqw #ffdf8c;
+  backface-visibility: hidden;
+}
+
+.treasury-loader-coin::before,
+.treasury-loader-coin::after {
+  content: '';
+}
+
+.treasury-loader-coin::before {
+  transform: rotateY(180deg) translateZ(0.9cqw);
+}
+
+.treasury-loader-coin::after {
+  inset: 17%;
+  border: 1px solid #b4813555;
+  background: transparent;
+  box-shadow: none;
+  transform: rotateY(180deg) translateZ(1cqw);
+}
+
+.treasury-loader-coin > span {
+  display: grid;
+  place-items: center;
+  color: #593910;
   font-size: 10cqw;
-  font-weight: 700;
-  animation: treasury-coin-drop var(--cycle) infinite;
+  font-weight: 800;
+  line-height: 1;
+  transform: translateZ(0.9cqw);
 }
 
 .treasury-loader-box {
   position: absolute;
-  inset: auto 25% 12%;
-  height: 21cqw;
-  border: 1px solid #3e9471;
-  border-radius: 0.6rem 0.6rem 0.8rem 0.8rem;
-  background: #176348;
-  box-shadow: inset 0 5px #328764, 0 4px #092d23;
-  transform-origin: bottom;
-  animation: treasury-box-impact var(--cycle) infinite;
+  inset: var(--impact-y) 24% 10%;
+  border: max(1px, 0.45cqw) solid #0b432e;
+  border-radius: 2cqw 2cqw 3.5cqw 3.5cqw;
+  background: linear-gradient(150deg, #227d5b, #12503a 65%, #0b3d2d);
+  box-shadow: inset 0 0 0 0.9cqw #f0ffe014, 0 1.1cqw 0 #083526, 0 3cqw 5cqw #0b3e2728;
+  transform-origin: center bottom;
+  animation: treasury-box-impact var(--cycle) both infinite;
 }
 
-.treasury-loader-slot,
+.treasury-loader-lid {
+  position: absolute;
+  inset: -2.4cqw -1cqw auto;
+  height: 6.4cqw;
+  border: max(1px, 0.4cqw) solid #176348;
+  border-radius: 2cqw;
+  background: linear-gradient(180deg, #409978, #27775a);
+  box-shadow: 0 0.6cqw #0b432e, inset 0 0.55cqw #d3ffd644;
+}
+
+.treasury-loader-lid::after {
+  position: absolute;
+  inset: 29% 27%;
+  border-radius: 999px;
+  background: #0a3126;
+  box-shadow: 0 0.4cqw #a9d8b880;
+  content: '';
+}
+
 .treasury-loader-lamp,
 .treasury-loader-sparks,
 .treasury-loader-ripple {
   position: absolute;
   left: 50%;
-  translate: -50%;
-}
-
-.treasury-loader-slot {
-  top: 3cqw;
-  width: 46%;
-  height: 2cqw;
-  border-radius: 999px;
-  background: #102f23;
 }
 
 .treasury-loader-lamp {
-  bottom: 4cqw;
-  width: 3cqw;
-  height: 3cqw;
+  bottom: 3.7cqw;
+  width: 2.3cqw;
+  aspect-ratio: 1;
+  margin-left: -1.15cqw;
   border-radius: 50%;
-  background: #8bbda7;
-  animation: treasury-slot-light var(--cycle) infinite;
+  background: #89baaa;
+}
+
+.treasury-loader-lamp::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #ffe098;
+  box-shadow: 0 0 2.7cqw #ffd86e;
+  opacity: 0;
+  content: '';
+  animation: treasury-lamp var(--cycle) both infinite;
 }
 
 .treasury-loader-ripple,
 .treasury-loader-sparks {
-  bottom: calc(12% + 17cqw);
-  pointer-events: none;
+  top: var(--impact-y);
 }
 
 .treasury-loader-ripple {
-  width: 19cqw;
+  width: 20cqw;
   height: 7cqw;
-  border: 2px solid #b77b23;
+  margin: -3.5cqw 0 0 -10cqw;
+  border: max(1px, 0.45cqw) solid #a27026;
   border-radius: 50%;
   opacity: 0;
-  animation: treasury-ripple var(--cycle) infinite;
+  animation: treasury-ripple var(--cycle) both infinite;
 }
 
 .treasury-loader-sparks i {
   position: absolute;
-  width: 2.5cqw;
-  height: 2.5cqw;
+  inset: -1cqw auto auto -1cqw;
+  width: 2cqw;
+  aspect-ratio: 1;
   border: 1px solid #aa751d;
+  border-radius: 28%;
   background: #f4ce76;
   opacity: 0;
-  animation: treasury-spark var(--cycle) infinite;
+  animation: treasury-spark var(--cycle) both infinite;
 }
 
 @keyframes treasury-orbit {
-  to { transform: rotateX(56deg) rotate(360deg); }
+  to { transform: rotateX(52deg) rotate(376deg); }
 }
 
-@keyframes treasury-coin-drop {
-  0% { transform: translate(-25cqw, 8cqw) rotateY(-85deg) scale(0.5); opacity: 0; }
-  20% { opacity: 1; }
-  33% { transform: translate(6cqw, -3cqw) rotateY(340deg) rotate(18deg) scale(1.12); }
-  48% { transform: translate(0, 1cqw) rotateY(720deg) scale(1); opacity: 1; animation-timing-function: cubic-bezier(0.55, 0, 1, 0.55); }
-  64% { transform: translateY(24cqw) rotateY(1080deg) scale(0.85); opacity: 1; }
-  68%, 100% { transform: translateY(28cqw) rotateY(1080deg) scale(0.75); opacity: 0; }
+@keyframes treasury-coin-path {
+  0% {
+    transform: translate(-28cqw, -9cqw) scale(0.68);
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.12, 0.57, 0.38, 1);
+  }
+  14% { opacity: 1; }
+  40% {
+    transform: translate(4cqw, -29cqw) scale(1.12);
+    animation-timing-function: cubic-bezier(0.26, 0, 0.75, 0.64);
+  }
+  68% { transform: translate(0, -7cqw) scale(0.94); opacity: 1; }
+  78%, 100% { transform: translate(0, 5cqw) scale(0.82); opacity: 1; }
+}
+
+@keyframes treasury-coin-spin {
+  0% { transform: rotateY(-62deg) rotate(-26deg); }
+  40% { transform: rotateY(388deg) rotate(13deg); }
+  68% { transform: rotateY(632deg) rotate(0); }
+  80%, 100% { transform: rotateY(710deg) rotate(0); }
 }
 
 @keyframes treasury-box-impact {
-  0%, 63%, 84%, 100% { transform: none; }
-  68% { transform: scale(1.08, 0.86); }
-  75% { transform: scale(0.96, 1.05); }
+  0%, 68%, 100% { transform: scale(1); }
+  74% { transform: scale(1.06, 0.9); animation-timing-function: ease-out; }
+  84% { transform: scale(0.99, 1.035); animation-timing-function: ease-in-out; }
 }
 
-@keyframes treasury-slot-light {
-  0%, 63%, 100% { background: #8bbda7; }
-  69%, 85% { background: #ffe098; box-shadow: 0 0 0.75rem #f4ce76; }
+@keyframes treasury-lamp {
+  0%, 68%, 100% { opacity: 0; }
+  75%, 86% { opacity: 1; }
 }
 
 @keyframes treasury-ripple {
-  0%, 64% { transform: scale(0.4); opacity: 0; }
-  67% { opacity: 0.8; }
-  91%, 100% { transform: scale(3); opacity: 0; }
+  0%, 68% { transform: scale(0.6); opacity: 0; }
+  73% { opacity: 0.65; animation-timing-function: ease-out; }
+  98%, 100% { transform: scale(2.75); opacity: 0; }
 }
 
 @keyframes treasury-spark {
-  0%, 64% { transform: rotate(var(--spark-angle)) translateX(0) scale(0.3); opacity: 0; }
-  68% { opacity: 1; }
-  90%, 100% { transform: rotate(var(--spark-angle)) translateX(25cqw) rotate(90deg) scale(0.25); opacity: 0; }
+  0%, 68% { transform: rotate(var(--spark-angle)) translateX(1cqw) rotate(45deg) scale(0.4); opacity: 0; }
+  73% { opacity: 1; animation-timing-function: cubic-bezier(0.15, 0.6, 0.25, 1); }
+  97%, 100% { transform: rotate(var(--spark-angle)) translateX(var(--spark-travel)) rotate(150deg) scale(0.35); opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .treasury-loader-scene * {
+  .treasury-loader-scene :is(.treasury-loader-orbit, .treasury-loader-coin-path, .treasury-loader-coin, .treasury-loader-box, .treasury-loader-ripple, .treasury-loader-sparks i),
+  .treasury-loader-scene .treasury-loader-lamp::after {
     animation: none;
   }
 }
