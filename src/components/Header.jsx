@@ -1,15 +1,15 @@
 import React from 'react';
-import { RefreshCw, Search, ShieldAlert, Sparkles, Menu } from 'lucide-react';
+import { RefreshCw, Search, Menu } from 'lucide-react';
 
 export default function Header({ activeTab, onRefresh, loading, searchTerm, setSearchTerm, onMenuClick }) {
   const getTitle = () => {
     switch (activeTab) {
       case 'dashboard': return 'Executive Financial Dashboard';
-      case 'receipts': return 'Receipts & Income Collection';
+      case 'receipts': return 'Lawzam Collection';
       case 'members': return 'Member Directory & Financial History';
       case 'expenses': return 'Expense Tracker & Committee Outflow';
       case 'events': return 'Event Budgeting & Cost Control';
-      case 'invoices': return 'Invoicing & Bill Management';
+      case 'income': return 'Toloba Income';
       case 'audit': return 'Security Audit Trail & Logs';
       case 'users': return 'User Access & Password Management';
       default: return 'Account Management';
@@ -35,7 +35,7 @@ export default function Header({ activeTab, onRefresh, loading, searchTerm, setS
 
       <div className="flex items-center space-x-2 sm:space-x-3">
         {/* Search Input */}
-        {['members', 'receipts', 'expenses', 'invoices'].includes(activeTab) && (
+        {['members', 'receipts', 'expenses', 'income', 'audit'].includes(activeTab) && (
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 

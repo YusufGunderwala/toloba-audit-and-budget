@@ -1,21 +1,28 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense, useRef, useDeferredValue } from 'react';
+import toast from 'react-hot-toast';
 import { LayoutDashboard, Receipt, Users, TrendingDown, Menu } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { fetchAllRows } from '../lib/fetchAllRows';
 import Sidebar from './Sidebar';
 import Header from './Header';
-import DashboardOverview from './tabs/DashboardOverview';
-import ReceiptsManager from './tabs/ReceiptsManager';
-import MembersManager from './tabs/MembersManager';
-import ExpensesManager from './tabs/ExpensesManager';
-import EventBudgetManager from './tabs/EventBudgetManager';
-import InvoicesManager from './tabs/InvoicesManager';
-import AuditLogManager from './tabs/AuditLogManager';
-import UserManagementTab from './tabs/UserManagementTab';
 import ChangePasswordModal from './ChangePasswordModal';
+import TreasuryLoader from './ui/TreasuryLoader';
+
+// Allow two complete 2.4-second coin animations on dashboard entry.
+const MINIMUM_LOADER_MS = 4800;
+
+const DashboardOverview = lazy(() => import('./tabs/DashboardOverview'));
+const ReceiptsManager = lazy(() => import('./tabs/ReceiptsManager'));
+const MembersManager = lazy(() => import('./tabs/MembersManager'));
+const ExpensesManager = lazy(() => import('./tabs/ExpensesManager'));
+const EventBudgetManager = lazy(() => import('./tabs/EventBudgetManager'));
+const IncomeManager = lazy(() => import('./tabs/IncomeManager'));
+const AuditLogManager = lazy(() => import('./tabs/AuditLogManager'));
+const UserManagementTab = lazy(() => import('./tabs/UserManagementTab'));
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
-  { id: 'receipts', label: 'Receipts', icon: Receipt },
+  { id: 'receipts', label: 'Lawzam', icon: Receipt },
   { id: 'members', label: 'Members', icon: Users },
   { id: 'expenses', label: 'Expenses', icon: TrendingDown },
   { id: 'more', label: 'More', icon: Menu, isMore: true },
@@ -34,7 +41,7 @@ export default function Dashboard({ user, userRole, onLogout }) {
     });
   }, [activeTab]);
 
-  const isMoreActive = ['events', 'invoices', 'audit', 'users'].includes(activeTab);
+  const isMoreActive = ['events', 'income', 'audit', 'users'].includes(activeTab);
   const activeNavId = isMoreActive ? 'more' : activeTab;
 
   const handleNavClick = (item) => {
@@ -46,6 +53,8 @@ export default function Dashboard({ user, userRole, onLogout }) {
   };
 
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredSearch = useDeferredValue(searchTerm);
+  const tabSearch = tab => activeTab === tab ? deferredSearch : '';
   const [loading, setLoading] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -55,8 +64,16 @@ export default function Dashboard({ user, userRole, onLogout }) {
   const [receipts, setReceipts] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [events, setEvents] = useState([]);
+  const [income, setIncome] = useState([]);
+  const [loadError, setLoadError] = useState('');
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [loaderTimeElapsed, setLoaderTimeElapsed] = useState(false);
+  const requestVersion = useRef(0);
+  const pending = useRef(false);
   const [invoices, setInvoices] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+  const [auditError, setAuditError] = useState('');
+  const [auditLoading, setAuditLoading] = useState(false);
 
   // Role checks
   const isAdmin = userRole?.role === 'super_admin';
@@ -64,40 +81,73 @@ export default function Dashboard({ user, userRole, onLogout }) {
   const canWrite = isAdmin || isTreasurer;
 
   // --- Data Fetching (Parallel for Performance) ---
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (changedTables) => {
+    const requestedTables = pending.current || !Array.isArray(changedTables) ? null : changedTables;
+    pending.current = true;
+    const version = ++requestVersion.current;
     setLoading(true);
+    setLoadError('');
     try {
-      const queries = [
-        supabase.from('members').select('*').order('name').limit(2000),
-        supabase.from('receipts').select('*, members(name, its_number, phone)').order('created_at', { ascending: false }).limit(2000),
-        supabase.from('expenses').select('*, events(event_name)').order('created_at', { ascending: false }).limit(2000),
-        supabase.from('events').select('*').order('created_at', { ascending: false }).limit(2000),
-        supabase.from('invoices').select('*').order('created_at', { ascending: false }).limit(2000),
-        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(1000)
+      const datasets = [
+        [setMembers, 'members', '*', 'name', true],
+        [setReceipts, 'receipts', '*, members(name, its_number, phone)', 'receipt_date', false],
+        [setExpenses, 'expenses', '*, events(event_name)', 'created_at', false],
+        [setEvents, 'events', '*', 'created_at', false],
+        [setInvoices, 'invoices', '*', 'created_at', false],
+        [setIncome, 'income', '*', 'received_on', false]
       ];
-
-      const results = await Promise.allSettled(queries);
-
-      if (results[0].status === 'fulfilled' && results[0].value.data) setMembers(results[0].value.data);
-      if (results[1].status === 'fulfilled' && results[1].value.data) setReceipts(results[1].value.data);
-      if (results[2].status === 'fulfilled' && results[2].value.data) setExpenses(results[2].value.data);
-      if (results[3].status === 'fulfilled' && results[3].value.data) setEvents(results[3].value.data);
-      if (results[4].status === 'fulfilled' && results[4].value.data) setInvoices(results[4].value.data);
-      if (results[5].status === 'fulfilled' && results[5].value.data) setAuditLogs(results[5].value.data);
-
-    } catch (err) {
-      console.error('Error loading data:', err);
+      const requested = requestedTables ? datasets.filter(([, table]) => requestedTables.includes(table)) : datasets;
+      const results = await Promise.all(requested.map(async ([setRows, ...query]) => [setRows, await fetchAllRows(...query)]));
+      if (version !== requestVersion.current) return;
+      results.forEach(([setRows, rows]) => setRows(rows));
+      setHasLoaded(true);
+    } catch (error) {
+      if (version === requestVersion.current) setLoadError(error.message);
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) {
+        pending.current = false;
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     fetchData();
+    return () => {
+      requestVersion.current += 1;
+      pending.current = false;
+    };
   }, [fetchData]);
 
+  useEffect(() => {
+    const timer = setTimeout(() => setLoaderTimeElapsed(true), MINIMUM_LOADER_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const refreshReceipts = useCallback(() => fetchData(['receipts']), [fetchData]);
+  const refreshMembers = useCallback(() => fetchData(['members', 'receipts']), [fetchData]);
+  const refreshExpenses = useCallback(() => fetchData(['expenses']), [fetchData]);
+  const refreshEvents = useCallback(() => fetchData(['events', 'expenses']), [fetchData]);
+  const refreshIncome = useCallback(() => fetchData(['income']), [fetchData]);
+
+  useEffect(() => {
+    if (activeTab !== 'audit' || !canWrite || loading) return;
+    let active = true;
+    setAuditLoading(true);
+    setAuditError('');
+    fetchAllRows('audit_logs', '*', 'created_at', false)
+      .then(rows => { if (active) setAuditLogs(rows); })
+      .catch(error => { if (active) setAuditError(error.message); })
+      .finally(() => { if (active) setAuditLoading(false); });
+    return () => { active = false; };
+  }, [activeTab, canWrite, loading]);
+
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) {
+      toast.error('Could not sign out. Try again.');
+      return;
+    }
     onLogout();
   };
 
@@ -123,7 +173,6 @@ export default function Dashboard({ user, userRole, onLogout }) {
           user={user} 
           userRole={userRole} 
           receipts={receipts}
-          expenses={expenses}
           members={members}
           onLogout={handleLogout} 
           onChangePassword={() => setShowPasswordModal(true)}
@@ -154,104 +203,106 @@ export default function Dashboard({ user, userRole, onLogout }) {
           <div className="absolute top-0 right-0 w-64 md:w-96 h-64 md:h-96 bg-toloba/5 rounded-full blur-3xl -z-10 no-print pointer-events-none"></div>
           <div className="absolute bottom-0 left-0 w-64 md:w-96 h-64 md:h-96 bg-emerald-300/10 rounded-full blur-3xl -z-10 no-print pointer-events-none"></div>
 
-          {visitedTabs.has('dashboard') && (
-            <div className={activeTab === 'dashboard' ? 'block' : 'hidden'}>
-              <DashboardOverview 
-                receipts={receipts} 
-                expenses={expenses} 
-                members={members} 
-                events={events}
-                invoices={invoices}
-                setActiveTab={setActiveTab}
-                canWrite={canWrite}
-              />
-            </div>
+          {loadError && (
+            <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">
+              {hasLoaded ? 'Showing the last successful refresh. ' : ''}Could not load treasury data. {loadError}
+            </p>
           )}
+          {!loadError && (!hasLoaded || !loaderTimeElapsed) && <TreasuryLoader />}
+          {hasLoaded && loaderTimeElapsed && <Suspense fallback={<TreasuryLoader label="Opening view…" />}>
+            {visitedTabs.has('dashboard') && (
+              <div className={activeTab === 'dashboard' ? 'block' : 'hidden'}>
+                <DashboardOverview
+                  receipts={receipts}
+                  expenses={expenses}
+                  income={income}
+                  setActiveTab={setActiveTab}
+                  canWrite={canWrite}
+                />
+              </div>
+            )}
 
-          {visitedTabs.has('receipts') && (
-            <div className={activeTab === 'receipts' ? 'block' : 'hidden'}>
-              <ReceiptsManager 
-                receipts={receipts} 
-                members={members} 
-                user={user}
-                canWrite={canWrite}
-                onRefresh={fetchData}
-                searchTerm={searchTerm}
-              />
-            </div>
-          )}
+            {visitedTabs.has('receipts') && (
+              <div className={activeTab === 'receipts' ? 'block' : 'hidden'}>
+                <ReceiptsManager
+                  receipts={receipts}
+                  members={members}
+                  canWrite={canWrite}
+                  onRefresh={refreshReceipts}
+                  searchTerm={tabSearch('receipts')}
+                />
+              </div>
+            )}
 
-          {visitedTabs.has('members') && (
-            <div className={activeTab === 'members' ? 'block' : 'hidden'}>
-              <MembersManager 
-                members={members} 
-                receipts={receipts}
-                invoices={invoices}
-                user={user}
-                canWrite={canWrite}
-                onRefresh={fetchData}
-                searchTerm={searchTerm}
-              />
-            </div>
-          )}
+            {visitedTabs.has('members') && (
+              <div className={activeTab === 'members' ? 'block' : 'hidden'}>
+                <MembersManager
+                  members={members}
+                  receipts={receipts}
+                  invoices={invoices}
+                  canWrite={canWrite}
+                  onRefresh={refreshMembers}
+                  searchTerm={tabSearch('members')}
+                />
+              </div>
+            )}
 
-          {visitedTabs.has('expenses') && (
-            <div className={activeTab === 'expenses' ? 'block' : 'hidden'}>
-              <ExpensesManager 
-                expenses={expenses} 
-                events={events}
-                user={user}
-                canWrite={canWrite}
-                onRefresh={fetchData}
-                searchTerm={searchTerm}
-              />
-            </div>
-          )}
+            {visitedTabs.has('expenses') && (
+              <div className={activeTab === 'expenses' ? 'block' : 'hidden'}>
+                <ExpensesManager
+                  expenses={expenses}
+                  events={events}
+                  canWrite={canWrite}
+                  onRefresh={refreshExpenses}
+                  searchTerm={tabSearch('expenses')}
+                />
+              </div>
+            )}
 
-          {visitedTabs.has('events') && (
-            <div className={activeTab === 'events' ? 'block' : 'hidden'}>
-              <EventBudgetManager 
-                events={events} 
-                expenses={expenses}
-                receipts={receipts}
-                user={user}
-                canWrite={canWrite}
-                onRefresh={fetchData}
-              />
-            </div>
-          )}
+            {visitedTabs.has('events') && (
+              <div className={activeTab === 'events' ? 'block' : 'hidden'}>
+                <EventBudgetManager
+                  expenses={expenses}
+                  events={events}
+                  canWrite={canWrite}
+                  onRefresh={refreshEvents}
+                />
+              </div>
+            )}
 
-          {visitedTabs.has('invoices') && (
-            <div className={activeTab === 'invoices' ? 'block' : 'hidden'}>
-              <InvoicesManager 
-                invoices={invoices} 
-                user={user}
-                canWrite={canWrite}
-                onRefresh={fetchData}
-                searchTerm={searchTerm}
-              />
-            </div>
-          )}
+            {visitedTabs.has('income') && (
+              <div className={activeTab === 'income' ? 'block' : 'hidden'}>
+                <IncomeManager
+                  income={income}
+                  canWrite={canWrite}
+                  onRefresh={refreshIncome}
+                  searchTerm={tabSearch('income')}
+                />
+              </div>
+            )}
 
-          {visitedTabs.has('audit') && (
-            <div className={activeTab === 'audit' ? 'block' : 'hidden'}>
-              <AuditLogManager 
-                auditLogs={auditLogs}
-                searchTerm={searchTerm}
-              />
-            </div>
-          )}
+            {canWrite && activeTab === 'audit' && (
+              <div className={activeTab === 'audit' ? 'block' : 'hidden'}>
+                {auditLoading && <p role="status" className="p-3 text-sm text-slate-600">Loading audit trail…</p>}
+                {auditError && <p role="alert" className="p-3 text-sm text-red-800">{auditError}</p>}
+                <AuditLogManager
+                  auditLogs={auditLogs}
+                  searchTerm={tabSearch('audit')}
+                />
+              </div>
+            )}
 
-          {visitedTabs.has('users') && (
-            <div className={activeTab === 'users' ? 'block' : 'hidden'}>
-              <UserManagementTab 
-                user={user}
-                userRole={userRole}
-                onRefresh={fetchData}
-              />
-            </div>
-          )}
+            {isAdmin && visitedTabs.has('users') && (
+              <div className={activeTab === 'users' ? 'block' : 'hidden'}>
+                <UserManagementTab
+                  user={user}
+                  userRole={userRole}
+                  members={members}
+                />
+              </div>
+            )}
 
+          </Suspense>}
         </div>
 
         {/* Floating Mobile Bottom Navigation Dock */}
@@ -301,8 +352,7 @@ export default function Dashboard({ user, userRole, onLogout }) {
 
       {/* Change Password Modal */}
       {showPasswordModal && (
-        <ChangePasswordModal 
-          user={user} 
+        <ChangePasswordModal
           onClose={() => setShowPasswordModal(false)} 
         />
       )}

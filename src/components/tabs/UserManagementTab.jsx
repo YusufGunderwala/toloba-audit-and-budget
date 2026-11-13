@@ -1,5 +1,5 @@
 import toast from 'react-hot-toast';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import CustomSelect from '../ui/CustomSelect';
 import { 
   ShieldCheck, 
@@ -12,24 +12,29 @@ import {
   Eye, 
   EyeOff, 
   Sparkles, 
-  IndianRupee, 
-  Eye as EyeIcon,
   X,
   UserPlus,
   Mail,
   User
 } from 'lucide-react';
+import { fetchAllRows } from '../../lib/fetchAllRows';
 import { supabase } from '../../lib/supabase';
-import { logAuditEvent } from '../../lib/auditLogger';
 
-export default function UserManagementTab({ user, userRole, onRefresh }) {
+async function manageUser(body) {
+  const { error } = await supabase.functions.invoke('manage-treasury-users', { body });
+  if (!error) return;
+  const response = await error.context?.json?.().catch(() => null);
+  throw new Error(response?.error || error.message);
+}
+
+export default function UserManagementTab({ user, userRole, members }) {
   const [usersList, setUsersList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedUserForReset, setSelectedUserForReset] = useState(null);
 
   // Create User State
   const [showCreateUser, setShowCreateUser] = useState(false);
-  const [membersList, setMembersList] = useState([]);
+  const membersList = useMemo(() => members.filter(member => member.status === 'active'), [members]);
   const [newUserForm, setNewUserForm] = useState({
     memberId: '',
     email: '',
@@ -49,9 +54,7 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('user_roles').select('*').order('created_at', { ascending: false });
-      if (error) throw error;
-      setUsersList(data || []);
+      setUsersList(await fetchAllRows('user_roles', '*', 'created_at', false));
     } catch (err) {
       console.error('Error fetching users:', err);
     } finally {
@@ -59,27 +62,21 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
     }
   };
 
-  const fetchMembers = async () => {
-    try {
-      const { data, error } = await supabase.from('members').select('id, name, its_number');
-      if (error) throw error;
-      setMembersList(data || []);
-    } catch (err) {
-      console.error('Error fetching members:', err);
-    }
-  };
-
   useEffect(() => {
     fetchUsers();
-    fetchMembers();
   }, []);
 
   // Generate secure random password
   const generateRandomPassword = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%^&*';
     let pwd = '';
-    for (let i = 0; i < 12; i++) {
-      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    const max = 256 - (256 % chars.length);
+    const bytes = new Uint8Array(16);
+    while (pwd.length < 12) {
+      for (const value of crypto.getRandomValues(bytes)) {
+        if (value < max) pwd += chars[value % chars.length];
+        if (pwd.length === 12) break;
+      }
     }
     setNewPassword(pwd);
   };
@@ -87,7 +84,7 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
   // Handle Admin Reset Password
   const handleAdminResetPassword = async (e) => {
     e.preventDefault();
-    if (!selectedUserForReset) return;
+    if (loading || !selectedUserForReset) return;
     if (newPassword.length < 6) {
       toast.error("Password must be at least 6 characters!");
       return;
@@ -97,19 +94,12 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
     setStatusMsg('');
 
     try {
-      // Call Postgres RPC function `admin_reset_user_password`
-      const { error } = await supabase.rpc('admin_reset_user_password', {
+      await manageUser({
+        action: 'reset',
         target_user_id: selectedUserForReset.user_id,
-        new_password: newPassword
+        password: newPassword
       });
 
-      if (error) throw error;
-
-      await logAuditEvent(
-        user, 
-        'ADMIN_RESET_PASSWORD', 
-        `Super Admin reset password for ${selectedUserForReset.display_name || selectedUserForReset.user_id}`
-      );
 
       setStatusMsg(`Password successfully reset for ${selectedUserForReset.display_name || 'User'}!`);
     } catch (err) {
@@ -122,6 +112,7 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
   // Handle Admin Create User
   const handleCreateUser = async (e) => {
     e.preventDefault();
+    if (loading) return;
     if (newUserForm.password.length < 6) {
       toast.error("Password must be at least 6 characters!");
       return;
@@ -134,20 +125,14 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
 
     setLoading(true);
     try {
-      const { error } = await supabase.rpc('admin_create_user', {
+      await manageUser({
+        action: 'create',
         email: newUserForm.email,
         password: newUserForm.password,
-        display_name: selectedMember.name,
+        member_id: selectedMember.id,
         role: newUserForm.role
       });
 
-      if (error) throw error;
-
-      await logAuditEvent(
-        user, 
-        'ADMIN_CREATE_USER', 
-        `Super Admin created a new user account for ${selectedMember.name} (${newUserForm.email})`
-      );
 
       toast.success(`User account for ${selectedMember.name} created successfully!`);
       setShowCreateUser(false);
@@ -162,27 +147,30 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
 
   // Handle Role Change
   const handleChangeRole = (targetUser, newRole) => {
+    if (targetUser.user_id === user.id) return;
     setRolePrompt({ show: true, user: targetUser, role: newRole });
   };
 
   const confirmChangeRole = async () => {
     const targetUser = rolePrompt.user;
     const newRole = rolePrompt.role;
+    if (!targetUser || loading) return;
+    setLoading(true);
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('user_roles')
         .update({ role: newRole })
-        .eq('id', targetUser.id);
+        .eq('id', targetUser.id).eq('role', targetUser.role).select('id').maybeSingle();
 
       if (error) throw error;
+      if (!data) throw new Error('The role changed since this list was loaded. Refresh and try again.');
 
-      await logAuditEvent(user, 'CHANGE_USER_ROLE', `Changed role of ${targetUser.display_name} to ${newRole}`);
       toast.success(`Role updated to ${newRole}!`);
-      fetchUsers();
-      onRefresh();
+      await fetchUsers();
     } catch (err) {
       toast.error("Error updating role: " + err.message);
     } finally {
+      setLoading(false);
       setRolePrompt({ show: false, user: null, role: '' });
     }
   };
@@ -258,6 +246,7 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
                   <div className="w-28 sm:w-32 flex-shrink-0">
                     <CustomSelect 
                       value={u.role} 
+                      disabled={u.user_id === user.id}
                       onChange={e => handleChangeRole(u, e.target.value)}
                       className={`text-[11px] font-bold px-2 py-1.5 rounded-lg border outline-none cursor-pointer ${
                         u.role === 'super_admin' ? 'bg-red-50 text-red-700 border-red-200' :
@@ -318,7 +307,8 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
                     <td className="py-4 px-6">
                       <CustomSelect 
                         value={u.role} 
-                        onChange={e => handleChangeRole(u, e.target.value)}
+                        disabled={u.user_id === user.id}
+                      onChange={e => handleChangeRole(u, e.target.value)}
                         className={`text-xs font-bold px-3 py-2 rounded-lg border outline-none cursor-pointer ${
                           u.role === 'super_admin' ? 'bg-red-50 text-red-700 border-red-200' :
                           u.role === 'treasurer' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
@@ -575,6 +565,7 @@ export default function UserManagementTab({ user, userRole, onRefresh }) {
               </button>
               <button 
                 onClick={confirmChangeRole}
+                disabled={loading}
                 className="px-4 py-2 bg-toloba hover:bg-toloba-dark text-white rounded-lg text-sm font-medium shadow-lg shadow-toloba/30 transition-all"
               >
                 Confirm Change

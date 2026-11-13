@@ -11,37 +11,26 @@ export default function LoginPage({ onLogin }) {
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     setError('');
 
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
+    try {
+      const { data, error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (authError) throw authError;
 
-    if (authError) {
-      setError(authError.message);
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles').select('*').eq('user_id', data.user.id).maybeSingle();
+      if (roleError || !roleData) {
+        await supabase.auth.signOut({ scope: 'local' });
+        throw new Error(roleError ? 'Could not verify your treasury role. Try again.' : 'This account has no treasury role.');
+      }
+      onLogin(data.user, roleData);
+    } catch (error) {
+      setError(error.message || 'Could not sign in. Try again.');
+    } finally {
       setLoading(false);
-      return;
     }
-
-    // Fetch user role
-    const { data: roleData, error: roleError } = await supabase
-      .from('user_roles')
-      .select('*')
-      .eq('user_id', data.user.id)
-      .single();
-
-    if (roleError || !roleData) {
-      console.error("Role fetch error:", roleError, data.user.id);
-      setError(`Login failed: ${roleError?.message || 'No role assigned for ID: ' + data.user.id}`);
-      await supabase.auth.signOut();
-      setLoading(false);
-      return;
-    }
-
-    onLogin(data.user, roleData);
-    setLoading(false);
   };
 
   return (

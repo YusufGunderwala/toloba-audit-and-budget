@@ -1,5 +1,5 @@
 import toast from 'react-hot-toast';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import CustomSelect from '../ui/CustomSelect';
 import { 
   CalendarDays, 
@@ -8,8 +8,6 @@ import {
   AlertTriangle, 
   CheckCircle2, 
   Trash2, 
-  PieChart as PieChartIcon, 
-  TrendingDown, 
   BarChart2, 
   X, 
   FileSpreadsheet, 
@@ -17,9 +15,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { exportToExcel, exportToPDF } from '../../lib/exportUtils';
-import { logAuditEvent } from '../../lib/auditLogger';
 
-export default function EventBudgetManager({ events, expenses, receipts, user, canWrite, onRefresh }) {
+function EventBudgetManager({ events, expenses, canWrite, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deletePrompt, setDeletePrompt] = useState({ show: false, event: null });
@@ -52,7 +49,6 @@ export default function EventBudgetManager({ events, expenses, receipts, user, c
 
       if (error) throw error;
 
-      await logAuditEvent(user, 'CREATE_EVENT', `Created event "${formData.eventName}" with budget ₹${formData.budgetAmount}`);
       toast.success("Event created successfully!");
       setFormData({ eventName: '', budgetAmount: '', startDate: '', endDate: '', status: 'active', notes: '' });
       setShowForm(false);
@@ -71,10 +67,9 @@ export default function EventBudgetManager({ events, expenses, receipts, user, c
   const confirmDeleteEvent = async () => {
     try {
       setLoading(true);
-      const { error } = await supabase.from('events').delete().eq('id', deletePrompt.event.id);
+      const { error } = await supabase.from('events').delete().eq('id', deletePrompt.event.id).select('id').single();
       if (error) throw error;
 
-      await logAuditEvent(user, 'DELETE_EVENT', `Deleted event "${deletePrompt.event.event_name}"`);
       toast.success("Event deleted.");
       setDeletePrompt({ show: false, event: null });
       onRefresh();
@@ -85,11 +80,20 @@ export default function EventBudgetManager({ events, expenses, receipts, user, c
     }
   };
 
+  const expensesByEvent = useMemo(() => {
+    const grouped = new Map();
+    for (const expense of expenses) {
+      if (!expense.event_id) continue;
+      const group = grouped.get(expense.event_id);
+      if (group) group.push(expense);
+      else grouped.set(expense.event_id, [expense]);
+    }
+    return grouped;
+  }, [expenses]);
+
   // Event specific analytics calculation
   const eventAnalytics = useMemo(() => {
-    const eventExpenses = selectedAnalyticsEvent
-      ? expenses.filter(e => e.event_id === selectedAnalyticsEvent.id)
-      : [];
+    const eventExpenses = expensesByEvent.get(selectedAnalyticsEvent?.id) || [];
 
     const eventSpentTotal = eventExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
     const eventBudget = selectedAnalyticsEvent ? parseFloat(selectedAnalyticsEvent.budget_amount || 0) : 0;
@@ -102,7 +106,7 @@ export default function EventBudgetManager({ events, expenses, receipts, user, c
     });
 
     return { eventExpenses, eventSpentTotal, eventBudget, eventBalance, eventCategoryMap };
-  }, [selectedAnalyticsEvent, expenses]);
+  }, [selectedAnalyticsEvent, expensesByEvent]);
 
   const { eventExpenses, eventSpentTotal, eventBudget, eventBalance, eventCategoryMap } = eventAnalytics;
 
@@ -142,7 +146,7 @@ export default function EventBudgetManager({ events, expenses, receipts, user, c
 
   const enrichedEvents = useMemo(() => {
     return events.map(ev => {
-      const evExpenses = expenses.filter(e => e.event_id === ev.id);
+      const evExpenses = expensesByEvent.get(ev.id) || [];
       const actualSpent = evExpenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
       const budget = parseFloat(ev.budget_amount || 0);
       
@@ -172,7 +176,7 @@ export default function EventBudgetManager({ events, expenses, receipts, user, c
         evExpenses
       };
     });
-  }, [events, expenses]);
+  }, [events, expensesByEvent]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
@@ -501,3 +505,5 @@ export default function EventBudgetManager({ events, expenses, receipts, user, c
     </div>
   );
 }
+
+export default memo(EventBudgetManager);

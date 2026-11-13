@@ -1,5 +1,7 @@
+import { ShowMoreRows } from '../ui/ShowMoreRows';
+import { useVisibleRows } from '../../lib/useVisibleRows';
 import toast from 'react-hot-toast';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import CustomSelect from '../ui/CustomSelect';
 import { 
   TrendingDown, 
@@ -7,15 +9,12 @@ import {
   FileSpreadsheet, 
   Trash2, 
   IndianRupee, 
-  CheckCircle2, 
-  Tag, 
-  Calendar 
+  CheckCircle2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { exportToExcel } from '../../lib/exportUtils';
-import { logAuditEvent } from '../../lib/auditLogger';
 
-export default function ExpensesManager({ expenses, events, user, canWrite, onRefresh, searchTerm }) {
+function ExpensesManager({ expenses, events, canWrite, onRefresh, searchTerm }) {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [deletePrompt, setDeletePrompt] = useState({ show: false, exp: null });
@@ -75,7 +74,6 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
 
       if (error) throw error;
 
-      await logAuditEvent(user, 'CREATE_EXPENSE', `Recorded expense "${formData.title}" for ₹${formData.amount} (${formData.category})`);
       toast.success("Expense logged successfully!");
       setFormData({
         title: '', amount: '', category: 'Catering', paymentMode: 'Cash',
@@ -97,10 +95,9 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
   const confirmDeleteExpense = async () => {
     try {
       setLoading(true);
-      const { error } = await supabase.from('expenses').delete().eq('id', deletePrompt.exp.id);
+      const { error } = await supabase.from('expenses').delete().eq('id', deletePrompt.exp.id).select('id').single();
       if (error) throw error;
 
-      await logAuditEvent(user, 'DELETE_EXPENSE', `Deleted expense "${deletePrompt.exp.title}" of ₹${deletePrompt.exp.amount}`);
       toast.success("Expense deleted.");
       setDeletePrompt({ show: false, exp: null });
       onRefresh();
@@ -110,6 +107,8 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
       setLoading(false);
     }
   };
+
+  const { visibleRows, showMore, remaining } = useVisibleRows(filteredExpenses);
 
   const handleExportExcel = () => {
     const data = filteredExpenses.map(e => ({
@@ -289,7 +288,7 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
           {filteredExpenses.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-sm">No expenses logged yet.</div>
           ) : (
-            filteredExpenses.map(e => (
+            visibleRows.map(e => (
               <div key={e.id} className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -362,7 +361,7 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
               {filteredExpenses.length === 0 ? (
                 <tr><td colSpan={canWrite ? 7 : 6} className="py-12 text-center text-slate-400">No expenses logged yet.</td></tr>
               ) : (
-                filteredExpenses.map(e => (
+                visibleRows.map(e => (
                   <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-4 px-4 md:px-6 font-mono font-bold text-slate-600">{e.voucher_no || '---'}</td>
                     <td className="py-4 px-4 md:px-6">
@@ -401,6 +400,7 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
             </tbody>
           </table>
         </div>
+        <ShowMoreRows remaining={remaining} onClick={showMore} />
       </div>
 
       {/* ===== DELETE PROMPT MODAL ===== */}
@@ -435,3 +435,5 @@ export default function ExpensesManager({ expenses, events, user, canWrite, onRe
     </div>
   );
 }
+
+export default memo(ExpensesManager);

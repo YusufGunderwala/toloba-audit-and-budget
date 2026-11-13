@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { KeyRound, X, CheckCircle2, Lock, Eye, EyeOff, AlertTriangle, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { logAuditEvent } from '../lib/auditLogger';
 
-export default function ChangePasswordModal({ user, onClose }) {
+export default function ChangePasswordModal({ onClose }) {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -35,14 +34,15 @@ export default function ChangePasswordModal({ user, onClose }) {
 
       if (updateError) throw updateError;
 
-      await logAuditEvent(user, 'CHANGE_PASSWORD', 'User updated account password');
       setSuccess('Password changed! Logging out of all devices for security...');
       setNewPassword('');
       setConfirmPassword('');
       
-      setTimeout(async () => {
-        await supabase.auth.signOut({ scope: 'global' });
-      }, 3000);
+      const { error: signOutError } = await supabase.auth.signOut({ scope: 'global' });
+      if (signOutError) {
+        setSuccess('');
+        setError('Password changed. Sign out and sign in again to refresh this session.');
+      }
     } catch (err) {
       setError(err.message || 'Failed to update password.');
     } finally {

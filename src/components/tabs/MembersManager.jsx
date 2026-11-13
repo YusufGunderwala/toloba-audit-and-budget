@@ -1,5 +1,7 @@
+import { ShowMoreRows } from '../ui/ShowMoreRows';
+import { useVisibleRows } from '../../lib/useVisibleRows';
 import toast from 'react-hot-toast';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import { 
   UserPlus, 
   Trash2, 
@@ -7,22 +9,20 @@ import {
   MessageCircle, 
   FileSpreadsheet, 
   History, 
-  X, 
-  Check, 
-  UserCheck 
+  X
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { exportToExcel } from '../../lib/exportUtils';
-import { logAuditEvent } from '../../lib/auditLogger';
+import { receiptDate } from '../../lib/treasuryDates';
 
-export default function MembersManager({ members, receipts, invoices, user, canWrite, onRefresh, searchTerm }) {
+function MembersManager({ members, receipts, invoices, canWrite, onRefresh, searchTerm }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [selectedLedgerMember, setSelectedLedgerMember] = useState(null);
 
   const [formData, setFormData] = useState({ name: '', its_number: '', phone: '' });
   const [loading, setLoading] = useState(false);
-  const [deletePrompt, setDeletePrompt] = useState({ show: false, member: null });
+  const [deactivatePrompt, setDeactivatePrompt] = useState({ show: false, member: null });
 
   // Filter members
   const filteredMembers = useMemo(() => {
@@ -37,10 +37,12 @@ export default function MembersManager({ members, receipts, invoices, user, canW
     });
   }, [members, searchTerm]);
 
+  const { visibleRows, showMore, remaining } = useVisibleRows(filteredMembers);
+
   // Handle Add / Edit Member
   const handleSubmitMember = async (e) => {
     e.preventDefault();
-    if (formData.its_number.length !== 8) {
+    if (!/^\d{8}$/.test(formData.its_number)) {
       toast.error("ITS Number must be exactly 8 digits.");
       return;
     }
@@ -56,10 +58,9 @@ export default function MembersManager({ members, receipts, invoices, user, canW
             its_number: formData.its_number,
             phone: formData.phone || null
           })
-          .eq('id', editingMember.id);
+          .eq('id', editingMember.id).select('id').single();
 
         if (error) throw error;
-        await logAuditEvent(user, 'EDIT_MEMBER', `Updated member ${formData.name} (ITS: ${formData.its_number})`);
         toast.success("Member updated successfully!");
       } else {
         // Add new
@@ -68,7 +69,6 @@ export default function MembersManager({ members, receipts, invoices, user, canW
         ]);
 
         if (error) throw error;
-        await logAuditEvent(user, 'ADD_MEMBER', `Added new member ${formData.name} (ITS: ${formData.its_number})`);
         toast.success("Member added successfully!");
       }
 
@@ -83,38 +83,48 @@ export default function MembersManager({ members, receipts, invoices, user, canW
     }
   };
 
-  // Delete Member
-  const handleDeleteMember = (member) => {
-    setDeletePrompt({ show: true, member });
+  // Deactivate Member
+  const handleDeactivateMember = (member) => {
+    setDeactivatePrompt({ show: true, member });
   };
 
-  const confirmDeleteMember = async () => {
+  const confirmDeactivateMember = async () => {
     try {
       setLoading(true);
-      const { error } = await supabase.from('members').delete().eq('id', deletePrompt.member.id);
+      const { error } = await supabase.from('members').update({ status: 'inactive' }).eq('id', deactivatePrompt.member.id).select('id').single();
       if (error) throw error;
 
-      await logAuditEvent(user, 'DELETE_MEMBER', `Deleted member ${deletePrompt.member.name} (${deletePrompt.member.its_number})`);
-      toast.success("Member deleted.");
-      setDeletePrompt({ show: false, member: null });
+      toast.success("Member deactivated.");
+      setDeactivatePrompt({ show: false, member: null });
       onRefresh();
     } catch (err) {
-      toast.error("Error deleting member: " + err.message);
+      toast.error("Error deactivating member: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const contributionTotals = useMemo(() => {
+    const totals = new Map();
+    for (const receipt of receipts) {
+      if (receipt.status === 'void') continue;
+      const total = totals.get(receipt.member_id) || { count: 0, paise: 0 };
+      total.count += 1;
+      total.paise += Math.round(Number(receipt.amount) * 100);
+      totals.set(receipt.member_id, total);
+    }
+    return totals;
+  }, [receipts]);
+
   const handleExportMembers = () => {
     const data = filteredMembers.map(m => {
-      const memberReceipts = receipts.filter(r => r.member_id === m.id && r.status !== 'void');
-      const totalContributed = memberReceipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+      const total = contributionTotals.get(m.id);
       return {
         'Full Name': m.name,
         'ITS Number': m.its_number,
         'WhatsApp Phone': m.phone || 'N/A',
-        'Total Receipts Paid': memberReceipts.length,
-        'Total Lawazam Contributed (₹)': totalContributed,
+        'Total Receipts Paid': total?.count ?? 0,
+        'Total Lawazam Contributed (₹)': (total?.paise ?? 0) / 100,
         'Member Since': new Date(m.created_at).toLocaleDateString('en-GB')
       };
     });
@@ -143,7 +153,7 @@ export default function MembersManager({ members, receipts, invoices, user, canW
 
   const memberOutstandingDues = useMemo(() => {
     return memberInvoices
-      .filter(inv => inv.status === 'unpaid')
+      .filter(inv => ['unpaid', 'overdue'].includes(inv.status))
       .reduce((sum, inv) => sum + parseFloat(inv.amount || 0), 0);
   }, [memberInvoices]);
 
@@ -152,7 +162,7 @@ export default function MembersManager({ members, receipts, invoices, user, canW
     const mappedReceipts = memberReceipts.map(r => ({
       ...r,
       type: 'receipt',
-      date: new Date(r.created_at),
+      date: new Date(`${receiptDate(r)}T00:00:00`),
       title_display: r.receipt_no,
       subtitle_display: `${r.period_month} ${r.period_year} • Mode: ${r.payment_mode}`,
       amount_display: parseFloat(r.amount),
@@ -216,9 +226,8 @@ export default function MembersManager({ members, receipts, invoices, user, canW
           {filteredMembers.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-sm">No members found.</div>
           ) : (
-            filteredMembers.map(m => {
-              const mReceipts = receipts.filter(r => r.member_id === m.id && r.status !== 'void');
-              const mTotal = mReceipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+            visibleRows.map(m => {
+              const mTotal = (contributionTotals.get(m.id)?.paise ?? 0) / 100;
 
               return (
                 <div key={m.id} className="p-4 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors">
@@ -268,11 +277,11 @@ export default function MembersManager({ members, receipts, invoices, user, canW
                         </button>
                       )}
 
-                      {canWrite && (
+                      {canWrite && m.status !== 'inactive' && (
                         <button 
-                          onClick={() => handleDeleteMember(m)}
+                          onClick={() => handleDeactivateMember(m)}
                           className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold inline-flex items-center"
-                          title="Delete Member"
+                          title="Deactivate Member"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -303,14 +312,13 @@ export default function MembersManager({ members, receipts, invoices, user, canW
               {filteredMembers.length === 0 ? (
                 <tr><td colSpan="7" className="py-12 text-center text-slate-400">No members found.</td></tr>
               ) : (
-                filteredMembers.map((m, idx) => {
-                  const mReceipts = receipts.filter(r => r.member_id === m.id && r.status !== 'void');
-                  const mTotal = mReceipts.reduce((sum, r) => sum + parseFloat(r.amount || 0), 0);
+                visibleRows.map((m, idx) => {
+                  const mTotal = (contributionTotals.get(m.id)?.paise ?? 0) / 100;
                   
                   return (
                     <tr key={m.id} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="py-4 px-4 md:px-6 text-slate-400 text-xs hidden md:table-cell">{idx + 1}</td>
-                      <td className="py-4 px-4 md:px-6 font-semibold text-slate-900">{m.name}</td>
+                      <td className="py-4 px-4 md:px-6 font-semibold text-slate-900">{m.name}{m.status === 'inactive' && <small className="ml-2 text-slate-500">Inactive</small>}</td>
                       <td className="py-4 px-4 md:px-6 font-mono text-slate-600 tracking-wider font-semibold">{m.its_number}</td>
                       <td className="py-4 px-4 md:px-6 hidden md:table-cell">
                         {m.phone ? (
@@ -347,11 +355,11 @@ export default function MembersManager({ members, receipts, invoices, user, canW
                           </button>
                         )}
 
-                        {canWrite && (
+                        {canWrite && m.status !== 'inactive' && (
                           <button 
-                            onClick={() => handleDeleteMember(m)}
+                            onClick={() => handleDeactivateMember(m)}
                             className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold inline-flex items-center md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-                            title="Delete Member"
+                            title="Deactivate Member"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -364,6 +372,7 @@ export default function MembersManager({ members, receipts, invoices, user, canW
             </tbody>
           </table>
         </div>
+        <ShowMoreRows remaining={remaining} onClick={showMore} />
       </div>
 
       {/* ===== ADD / EDIT MEMBER MODAL ===== */}
@@ -458,7 +467,7 @@ export default function MembersManager({ members, receipts, invoices, user, canW
                 <p className="text-sm sm:text-lg font-extrabold text-slate-800 mt-0.5 sm:mt-1 truncate">{memberReceipts.filter(r => r.status !== 'void').length}</p>
               </div>
               <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-amber-200 text-center shadow-2xs">
-                <p className="text-[9px] sm:text-[10px] text-amber-600 font-bold uppercase tracking-wider truncate">Dues Pending</p>
+                <p className="text-[9px] sm:text-[10px] text-amber-600 font-bold uppercase tracking-wider truncate">Legacy Invoice Dues</p>
                 <p className="text-sm sm:text-lg font-extrabold text-amber-700 mt-0.5 sm:mt-1 truncate">₹{memberOutstandingDues.toLocaleString('en-IN')}</p>
               </div>
             </div>
@@ -511,29 +520,29 @@ export default function MembersManager({ members, receipts, invoices, user, canW
       )}
 
       {/* ===== DELETE PROMPT MODAL ===== */}
-      {deletePrompt.show && (
+      {deactivatePrompt.show && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
-            <h3 className="text-lg font-bold text-slate-800 mb-2">Delete Member?</h3>
+            <h3 className="text-lg font-bold text-slate-800 mb-2">Deactivate Member?</h3>
             <p className="text-sm text-slate-600 mb-6">
-              Are you sure you want to delete <span className="font-semibold">{deletePrompt.member?.name}</span> (ITS: {deletePrompt.member?.its_number})?
+              Are you sure you want to deactivate <span className="font-semibold">{deactivatePrompt.member?.name}</span> (ITS: {deactivatePrompt.member?.its_number})?
               <br/><br/>
-              <span className="text-red-500 font-medium">Warning: This will also delete all of their receipt records! This action cannot be undone.</span>
+              <span className="text-red-500 font-medium">Receipt history stays available in the member passbook.</span>
             </p>
             <div className="flex justify-end gap-3">
               <button 
-                onClick={() => setDeletePrompt({ show: false, member: null })}
+                onClick={() => setDeactivatePrompt({ show: false, member: null })}
                 className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition-colors"
                 disabled={loading}
               >
                 Cancel
               </button>
               <button 
-                onClick={confirmDeleteMember}
+                onClick={confirmDeactivateMember}
                 disabled={loading}
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium shadow-lg shadow-red-500/30 transition-all flex items-center gap-2"
               >
-                {loading ? 'Deleting...' : 'Delete Permanently'}
+                {loading ? 'Deactivating...' : 'Deactivate'}
               </button>
             </div>
           </div>
@@ -542,3 +551,5 @@ export default function MembersManager({ members, receipts, invoices, user, canW
     </div>
   );
 }
+
+export default memo(MembersManager);

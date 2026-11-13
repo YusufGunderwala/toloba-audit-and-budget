@@ -1,8 +1,11 @@
+import { ShowMoreRows } from '../ui/ShowMoreRows';
+import { useVisibleRows } from '../../lib/useVisibleRows';
+import { memo } from 'react';
 import React from 'react';
-import { ShieldCheck, FileSpreadsheet, Activity, Clock, User } from 'lucide-react';
+import { ShieldCheck, FileSpreadsheet, Activity, User } from 'lucide-react';
 import { exportToExcel, exportToPDF } from '../../lib/exportUtils';
 
-export default function AuditLogManager({ auditLogs, searchTerm }) {
+function AuditLogManager({ auditLogs, searchTerm }) {
   const filteredLogs = auditLogs.filter(log => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
@@ -12,6 +15,8 @@ export default function AuditLogManager({ auditLogs, searchTerm }) {
       log.user_email?.toLowerCase().includes(term)
     );
   });
+
+  const { visibleRows, showMore, remaining } = useVisibleRows(filteredLogs);
 
   const handleExportExcel = () => {
     const data = filteredLogs.map(l => ({
@@ -70,7 +75,7 @@ export default function AuditLogManager({ auditLogs, searchTerm }) {
           {filteredLogs.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-sm">No audit events recorded yet.</div>
           ) : (
-            filteredLogs.map(l => (
+            visibleRows.map(l => (
               <div key={l.id} className="p-4 space-y-2 hover:bg-slate-50/60 transition-colors">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="inline-flex items-center gap-1 font-mono text-[10px] font-bold text-toloba bg-toloba/10 px-2 py-0.5 rounded border border-toloba/20">
@@ -107,7 +112,7 @@ export default function AuditLogManager({ auditLogs, searchTerm }) {
               {filteredLogs.length === 0 ? (
                 <tr><td colSpan="4" className="py-12 text-center text-slate-400">No audit events recorded yet.</td></tr>
               ) : (
-                filteredLogs.map(l => (
+                visibleRows.map(l => (
                   <tr key={l.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-4 px-6 text-slate-500 text-xs font-mono whitespace-nowrap">
                       {new Date(l.created_at).toLocaleString('en-GB')}
@@ -127,8 +132,11 @@ export default function AuditLogManager({ auditLogs, searchTerm }) {
             </tbody>
           </table>
         </div>
+        <ShowMoreRows remaining={remaining} onClick={showMore} />
       </div>
 
     </div>
   );
 }
+
+export default memo(AuditLogManager);

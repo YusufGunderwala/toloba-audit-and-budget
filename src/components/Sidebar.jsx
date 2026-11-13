@@ -1,7 +1,6 @@
 import React from 'react';
 import { 
   LayoutDashboard, 
-  PlusCircle, 
   Users, 
   Receipt, 
   TrendingDown, 
@@ -22,7 +21,6 @@ export default function Sidebar({
   user, 
   userRole, 
   receipts = [],
-  expenses = [],
   members = [],
   onLogout, 
   onChangePassword, 
@@ -30,7 +28,6 @@ export default function Sidebar({
 }) {
   const isAdmin = userRole?.role === 'super_admin';
   const isTreasurer = userRole?.role === 'treasurer';
-  const isViewer = userRole?.role === 'viewer';
   const canWrite = isAdmin || isTreasurer;
 
   const getRoleBadge = () => {
@@ -50,9 +47,9 @@ export default function Sidebar({
       title: 'FINANCIAL LEDGER',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={17} />, show: true },
-        { id: 'receipts', label: 'Receipts & Income', icon: <Receipt size={17} />, show: true, badge: totalReceiptsCount > 0 ? totalReceiptsCount : null },
+        { id: 'receipts', label: 'Lawzam Collection', icon: <Receipt size={17} />, show: true, badge: totalReceiptsCount > 0 ? totalReceiptsCount : null },
         { id: 'expenses', label: 'Expenses Outflow', icon: <TrendingDown size={17} />, show: true },
-        { id: 'invoices', label: 'Invoices & Bills', icon: <FileText size={17} />, show: true },
+        { id: 'income', label: 'Toloba Income', icon: <FileText size={17} />, show: true },
       ]
     },
     {

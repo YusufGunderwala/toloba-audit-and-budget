@@ -1,15 +1,6 @@
--- ====================================================================
--- TOLOBA UL KULLIYAAT IL MUMINOON - ENTERPRISE TREASURY SYSTEM SCHEMA
--- ====================================================================
-
--- Step 1: Clean/Reset Tables (Safe for fresh setup)
-DROP TABLE IF EXISTS public.audit_logs CASCADE;
-DROP TABLE IF EXISTS public.invoices CASCADE;
-DROP TABLE IF EXISTS public.expenses CASCADE;
-DROP TABLE IF EXISTS public.events CASCADE;
-DROP TABLE IF EXISTS public.receipts CASCADE;
-DROP TABLE IF EXISTS public.members CASCADE;
-DROP TABLE IF EXISTS public.user_roles CASCADE;
+-- Fresh Supabase projects only. Apply the treasury migration immediately afterward.
+-- Existing deployments should apply only the migration.
+BEGIN;
 
 -- 1. MEMBERS TABLE
 CREATE TABLE public.members (
@@ -100,10 +91,6 @@ CREATE TABLE public.audit_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- ====================================================================
--- ROW LEVEL SECURITY (RLS) POLICIES
--- ====================================================================
-
 ALTER TABLE public.members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
@@ -112,59 +99,4 @@ ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
--- READ POLICIES (All authenticated users can read)
-CREATE POLICY "Auth users read members" ON public.members FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Auth users read receipts" ON public.receipts FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Auth users read events" ON public.events FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Auth users read expenses" ON public.expenses FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Auth users read invoices" ON public.invoices FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Auth users read user_roles" ON public.user_roles FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Auth users read audit_logs" ON public.audit_logs FOR SELECT TO authenticated USING (true);
-
--- WRITE POLICIES (Super Admin & Treasurer can write)
-CREATE POLICY "Admin/Treasurer write members" ON public.members FOR ALL TO authenticated 
-USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('super_admin', 'treasurer')));
-
-CREATE POLICY "Admin/Treasurer write receipts" ON public.receipts FOR ALL TO authenticated 
-USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('super_admin', 'treasurer')));
-
-CREATE POLICY "Admin/Treasurer write events" ON public.events FOR ALL TO authenticated 
-USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('super_admin', 'treasurer')));
-
-CREATE POLICY "Admin/Treasurer write expenses" ON public.expenses FOR ALL TO authenticated 
-USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('super_admin', 'treasurer')));
-
-CREATE POLICY "Admin/Treasurer write invoices" ON public.invoices FOR ALL TO authenticated 
-USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role IN ('super_admin', 'treasurer')));
-
-CREATE POLICY "Super Admin write user_roles" ON public.user_roles FOR ALL TO authenticated 
-USING (EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = auth.uid() AND role = 'super_admin'));
-
-CREATE POLICY "System insert audit_logs" ON public.audit_logs FOR INSERT TO authenticated WITH CHECK (true);
-
--- ====================================================================
--- RPC FUNCTION FOR SUPER ADMIN TO RESET ANY USER'S PASSWORD
--- ====================================================================
-
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
-CREATE OR REPLACE FUNCTION public.admin_reset_user_password(target_user_id UUID, new_password TEXT)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  -- Verify caller is super_admin
-  IF NOT EXISTS (
-    SELECT 1 FROM public.user_roles 
-    WHERE user_id = auth.uid() AND role = 'super_admin'
-  ) THEN
-    RAISE EXCEPTION 'Unauthorized: Only Super Admins can reset user passwords.';
-  END IF;
-
-  -- Update target user's encrypted password in auth.users
-  UPDATE auth.users
-  SET encrypted_password = crypt(new_password, gen_salt('bf'))
-  WHERE id = target_user_id;
-END;
-$$;
+COMMIT;

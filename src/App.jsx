@@ -12,45 +12,63 @@ function App() {
 
   // Check for existing session on app load
   useEffect(() => {
+    let active = true;
+    let revision = 0;
     const checkSession = async () => {
-      const minWait = new Promise(resolve => setTimeout(resolve, 2500)); // Minimum 2.5s wait for logo animation
-
-      const authTask = (async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session?.user) {
-          // Fetch user role
-          const { data: roleData } = await supabase
-            .from('user_roles')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .single();
-          
-          if (roleData) {
-            setUser(session.user);
-            setUserRole(roleData);
-          } else {
-            // User exists but no role assigned - sign them out
-            await supabase.auth.signOut();
-          }
+      const current = ++revision;
+      const isCurrent = () => active && current === revision;
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (!isCurrent()) return;
+        if (!session?.user) {
+          setUser(null);
+          setUserRole(null);
+          return;
         }
-      })();
 
-      await Promise.all([minWait, authTask]);
-      setLoading(false);
+        const { data: roleData, error: roleError } = await supabase
+          .from('user_roles').select('*').eq('user_id', session.user.id).maybeSingle();
+        if (!isCurrent()) return;
+        if (roleError) throw roleError;
+        if (roleData) {
+          setUser(session.user);
+          setUserRole(roleData);
+        } else {
+          setUser(null);
+          setUserRole(null);
+          await supabase.auth.signOut({ scope: 'local' });
+        }
+      } catch (error) {
+        console.error('Unable to restore the treasury session:', error.message);
+      } finally {
+        if (isCurrent()) setLoading(false);
+      }
     };
 
     checkSession();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    let authTimer;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
+      clearTimeout(authTimer);
       if (event === 'SIGNED_OUT') {
+        revision += 1;
         setUser(null);
         setUserRole(null);
+        setLoading(false);
+      } else if (event === 'TOKEN_REFRESHED') {
+        authTimer = setTimeout(checkSession, 0);
       }
     });
+    window.addEventListener('focus', checkSession);
 
-    return () => subscription?.unsubscribe();
+    return () => {
+      active = false;
+      clearTimeout(authTimer);
+      window.removeEventListener('focus', checkSession);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleLogin = (userData, roleData) => {
@@ -104,7 +122,7 @@ function App() {
   return (
     <>
       <Toaster position="bottom-right" toastOptions={{ className: 'text-sm font-medium shadow-xl' }} />
-      <Dashboard user={user} userRole={userRole} onLogout={handleLogout} />
+      <Dashboard key={`${user.id}:${userRole.role}`} user={user} userRole={userRole} onLogout={handleLogout} />
     </>
   );
 }

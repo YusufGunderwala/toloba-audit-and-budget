@@ -1,21 +1,17 @@
+import { memo } from 'react';
 import React from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
   Wallet, 
-  Users, 
-  Download, 
   PlusCircle, 
   FileSpreadsheet,
   ArrowUpRight,
   ArrowDownRight,
   CalendarCheck,
-  AlertCircle,
-  Clock
+  IndianRupee
 } from 'lucide-react';
 import { 
-  BarChart, 
-  Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -28,49 +24,41 @@ import {
   AreaChart,
   Area
 } from 'recharts';
+import { treasuryDate, receiptDate, formatTreasuryDate } from '../../lib/treasuryDates';
 import { exportToExcel } from '../../lib/exportUtils';
 
 const COLORS = ['#105c38', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#64748b'];
 
-export default function DashboardOverview({ receipts = [], expenses = [], members = [], events = [], invoices = [], setActiveTab, canWrite }) {
-  // Financial Calculations
-  const totalIncome = receipts.filter(r => r.status !== 'void').reduce((acc, r) => acc + parseFloat(r.amount || 0), 0);
-  const totalExpense = expenses.reduce((acc, e) => acc + parseFloat(e.amount || 0), 0);
-  const netSurplus = totalIncome - totalExpense;
+function DashboardOverview({ receipts = [], expenses = [], income = [], setActiveTab, canWrite }) {
+  const collections = receipts.filter(receipt => receipt.status !== 'void').map(receipt => ({
+    ...receipt, date: receiptDate(receipt), title: receipt.members?.name || 'Member', ref: receipt.receipt_no
+  }));
+  const otherIncome = income.map(entry => ({
+    ...entry, date: entry.received_on, title: entry.source, ref: entry.reference || 'INCOME'
+  }));
+  const allIncome = [...collections, ...otherIncome];
+  const sum = rows => rows.reduce((total, row) => total + Math.round(Number(row.amount) * 100), 0) / 100;
+  const totalIncome = sum(allIncome);
+  const totalExpense = sum(expenses);
+  const netSurplus = (Math.round(totalIncome * 100) - Math.round(totalExpense * 100)) / 100;
+  const cashIncome = sum(allIncome.filter(entry => entry.payment_mode === 'Cash'));
+  const upiIncome = sum(allIncome.filter(entry => entry.payment_mode === 'UPI'));
+  const totalOtherIncome = sum(otherIncome);
 
-  const cashIncome = receipts.filter(r => r.payment_mode === 'Cash' && r.status !== 'void').reduce((acc, r) => acc + parseFloat(r.amount || 0), 0);
-  const upiIncome = receipts.filter(r => r.payment_mode === 'UPI' && r.status !== 'void').reduce((acc, r) => acc + parseFloat(r.amount || 0), 0);
-
-  // Invoices & Receivables
-  const unpaidInvoices = invoices.filter(i => i.status === 'unpaid' || i.status === 'overdue');
-  const totalPendingReceivables = unpaidInvoices.reduce((acc, i) => acc + parseFloat(i.amount || 0), 0);
-
-  // Group receipts by month for Area/Bar Chart
-  const monthlyDataMap = {};
-  
-  // Initialize last 6 months to ensure chart looks good even if empty
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date();
-    d.setMonth(d.getMonth() - i);
-    const mStr = `${d.toLocaleString('default', { month: 'short' })} ${d.getFullYear()}`;
-    monthlyDataMap[mStr] = { month: mStr, Income: 0, Expense: 0 };
+  const monthFormatter = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const today = new Date(`${treasuryDate()}T00:00:00Z`);
+  const months = new Map();
+  for (let offset = 5; offset >= 0; offset--) {
+    const month = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - offset, 1));
+    months.set(month.toISOString().slice(0, 7), { month: monthFormatter.format(month), Income: 0, Expense: 0 });
   }
-
-  receipts.filter(r => r.status !== 'void').forEach(r => {
-    const date = new Date(r.created_at);
-    const month = `${date.toLocaleString('default', { month: 'short' })} ${date.getFullYear()}`;
-    if (!monthlyDataMap[month]) monthlyDataMap[month] = { month, Income: 0, Expense: 0 };
-    monthlyDataMap[month].Income += parseFloat(r.amount || 0);
-  });
-
-  expenses.forEach(e => {
-    const date = new Date(e.created_at);
-    const month = `${date.toLocaleString('default', { month: 'short' })} ${date.getFullYear()}`;
-    if (!monthlyDataMap[month]) monthlyDataMap[month] = { month, Income: 0, Expense: 0 };
-    monthlyDataMap[month].Expense += parseFloat(e.amount || 0);
-  });
-
-  const chartData = Object.values(monthlyDataMap).slice(-6);
+  for (const [rows, field] of [[allIncome, 'Income'], [expenses, 'Expense']]) {
+    for (const row of rows) {
+      const month = months.get((row.date || treasuryDate(row.created_at)).slice(0, 7));
+      if (month) month[field] += Math.round(Number(row.amount) * 100);
+    }
+  }
+  const chartData = [...months.values()].map(row => ({ ...row, Income: row.Income / 100, Expense: row.Expense / 100 }));
 
   // Expense Category Pie Chart Data
   const categoryMap = {};
@@ -86,17 +74,15 @@ export default function DashboardOverview({ receipts = [], expenses = [], member
 
   // Activity Feed (Merge receipts and expenses)
   const combinedActivity = [
-    ...receipts.filter(r => r.status !== 'void').map(r => ({
-      ...r, type: 'income', date: new Date(r.created_at), title: r.members?.name || 'Member', ref: r.receipt_no
-    })),
+    ...allIncome.map(row => ({ ...row, type: 'income' })),
     ...expenses.map(e => ({
-      ...e, type: 'expense', date: new Date(e.created_at), title: e.vendor_name || 'Vendor', ref: e.voucher_no || 'EXP'
+      ...e, type: 'expense', date: treasuryDate(e.created_at), title: e.vendor_name || 'Vendor', ref: e.voucher_no || 'EXP'
     }))
-  ].sort((a, b) => b.date - a.date).slice(0, 8);
+  ].sort((a, b) => b.date.localeCompare(a.date) || b.created_at.localeCompare(a.created_at)).slice(0, 8);
 
 
   const handleExportFullLedger = () => {
-    const ledgerData = receipts.map(r => ({
+    const ledgerData = collections.map(r => ({
       'Receipt No': r.receipt_no,
       'Member Name': r.members?.name || 'N/A',
       'ITS Number': r.members?.its_number || 'N/A',
@@ -105,8 +91,17 @@ export default function DashboardOverview({ receipts = [], expenses = [], member
       'Mode': r.payment_mode,
       'Transaction / UTR': r.transaction_id || 'N/A',
       'Period': `${r.period_month} ${r.period_year}`,
-      'Date': new Date(r.created_at).toLocaleDateString('en-GB')
+      'Date': formatTreasuryDate(r.date)
     }));
+
+    otherIncome.forEach(entry => {
+      ledgerData.push({
+        'Receipt No': entry.ref, 'Member Name': entry.source, 'ITS Number': 'N/A',
+        'Type': `Toloba income (${entry.description})`, 'Amount (₹)': Number(entry.amount),
+        'Mode': entry.payment_mode, 'Transaction / UTR': entry.reference || 'N/A',
+        'Period': 'N/A', 'Date': formatTreasuryDate(entry.date)
+      });
+    });
 
     expenses.forEach(e => {
       ledgerData.push({
@@ -183,20 +178,19 @@ export default function DashboardOverview({ receipts = [], expenses = [], member
           </div>
         </div>
 
-        {/* Pending Receivables */}
+        {/* Other Income */}
         <div className="bg-white p-3.5 sm:p-5 md:p-6 rounded-2xl border border-slate-200/90 shadow-xs relative overflow-hidden group hover:border-amber-200 transition-colors">
           <div className="flex justify-between items-start gap-2">
             <div className="min-w-0">
-              <p className="text-[10px] sm:text-[11px] font-bold uppercase text-slate-400 tracking-wider truncate">Pending Dues</p>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-extrabold text-amber-600 mt-1 sm:mt-1.5 truncate">₹{totalPendingReceivables.toLocaleString('en-IN')}</h3>
+              <p className="text-[10px] sm:text-[11px] font-bold uppercase text-slate-400 tracking-wider truncate">Toloba Income</p>
+              <h3 className="text-lg sm:text-xl md:text-2xl font-extrabold text-amber-600 mt-1 sm:mt-1.5 truncate">₹{totalOtherIncome.toLocaleString('en-IN')}</h3>
             </div>
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center flex-shrink-0 border border-amber-100">
-              <Clock size={16} />
+              <IndianRupee size={16} />
             </div>
           </div>
           <div className="mt-2.5 sm:mt-4 flex items-center justify-between text-[10px] sm:text-[11px] font-bold text-slate-500 border-t border-slate-100 pt-2 sm:pt-2.5 truncate">
-            <span className="text-amber-600 uppercase tracking-wider">{unpaidInvoices.length} Unpaid</span>
-            {unpaidInvoices.length > 0 && <AlertCircle size={13} className="text-amber-500 flex-shrink-0" />}
+            <span className="text-amber-600 uppercase tracking-wider">{income.length} {income.length === 1 ? 'entry' : 'entries'}</span>
           </div>
         </div>
 
@@ -361,7 +355,7 @@ export default function DashboardOverview({ receipts = [], expenses = [], member
                     <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-medium mt-0.5 flex-wrap">
                       <span className="font-mono text-slate-600 font-semibold">{item.ref}</span>
                       <span>•</span>
-                      <span>{item.date.toLocaleDateString('en-GB')}</span>
+                      <span>{formatTreasuryDate(item.date)}</span>
                       {item.type === 'income' && item.members?.its_number && (
                         <>
                           <span>•</span>
@@ -417,7 +411,7 @@ export default function DashboardOverview({ receipts = [], expenses = [], member
                     <td className="py-3.5 px-6 font-bold text-slate-600 font-mono text-xs">{item.ref}</td>
                     <td className="py-3.5 px-6">
                       <p className="font-bold text-slate-800">{item.title}</p>
-                      {item.type === 'income' && <p className="text-[10px] text-slate-400 font-mono mt-0.5">ITS: {item.members?.its_number || '---'}</p>}
+                      {item.members?.its_number && <p className="text-[10px] text-slate-400 font-mono mt-0.5">ITS: {item.members.its_number}</p>}
                       {item.type === 'expense' && <p className="text-[10px] text-slate-400 uppercase mt-0.5">{item.category}</p>}
                     </td>
                     <td className="py-3.5 px-6">
@@ -439,7 +433,7 @@ export default function DashboardOverview({ receipts = [], expenses = [], member
                         {item.payment_mode}
                       </span>
                     </td>
-                    <td className="py-3.5 px-6 text-slate-500 text-xs font-medium">{item.date.toLocaleDateString('en-GB')}</td>
+                    <td className="py-3.5 px-6 text-slate-500 text-xs font-medium">{formatTreasuryDate(item.date)}</td>
                   </tr>
                 ))
               )}
@@ -451,3 +445,5 @@ export default function DashboardOverview({ receipts = [], expenses = [], member
     </div>
   );
 }
+
+export default memo(DashboardOverview);

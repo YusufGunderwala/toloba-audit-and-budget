@@ -1,14 +1,17 @@
+import { ShowMoreRows } from '../ui/ShowMoreRows';
+import { useVisibleRows } from '../../lib/useVisibleRows';
 import toast from 'react-hot-toast';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, memo } from 'react';
 import CustomSelect from '../ui/CustomSelect';
 import DateRangePicker from '../ui/DateRangePicker';
 import { 
   PlusCircle, 
-  Printer, 
+  ArrowLeft,
+  Download,
+  Printer,
   MessageCircle, 
   CheckCircle2, 
   IndianRupee, 
-  Search, 
   FileSpreadsheet,
   Eye,
   Ban,
@@ -18,18 +21,21 @@ import {
   XCircle,
   Calendar,
   CalendarDays,
-  RotateCcw,
-  Filter
+  RotateCcw
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { exportToExcel } from '../../lib/exportUtils';
-import { logAuditEvent } from '../../lib/auditLogger';
+import { treasuryDate, receiptDate, formatTreasuryDate } from '../../lib/treasuryDates';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
-const YEARS = ['2024', '2025', '2026', '2027', '2028'];
+const receiptAction = 'inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-3.5 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-toloba disabled:cursor-not-allowed disabled:opacity-50';
+const secondaryReceiptAction = `${receiptAction} border-slate-300 bg-white text-slate-700 enabled:hover:border-slate-400 enabled:hover:bg-slate-50`;
+const currentYear = Number(treasuryDate().slice(0, 4));
+const YEARS = Array.from({ length: currentYear - 2024 + 3 }, (_, index) => String(2024 + index));
+const currentMonth = MONTHS[Number(treasuryDate().slice(5, 7)) - 1];
 
 // Helper: Convert number to words for receipt
 function numberToWords(num) {
@@ -54,19 +60,54 @@ function numberToWords(num) {
   return result;
 }
 
-export default function ReceiptsManager({ receipts, members, user, canWrite, onRefresh, searchTerm }) {
+function ReceiptsManager({ receipts, members, canWrite, onRefresh, searchTerm }) {
   const [viewMode, setViewMode] = useState('list'); // 'list', 'create', 'print'
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [loading, setLoading] = useState(false);
   const [voidPrompt, setVoidPrompt] = useState({ show: false, receipt: null, reason: '' });
 
+  const [buildReceiptPDF, setBuildReceiptPDF] = useState(null);
+  const [pdfError, setPdfError] = useState('');
+  useEffect(() => {
+    if (viewMode !== 'print') return;
+    let current = true;
+    import('../../lib/receiptPDF').then(async module => {
+      const buildPDF = await module.loadReceiptPDF();
+      if (current) setBuildReceiptPDF(() => buildPDF);
+    }).catch(() => {
+      if (current) setPdfError('Could not load PDF tools. Refresh the page and try again.');
+    });
+    return () => { current = false; };
+  }, [viewMode]);
+
+  const shareReceipt = async () => {
+    try {
+      const pdf = buildReceiptPDF(selectedReceipt);
+      const filename = `${selectedReceipt.receipt_no}.pdf`;
+      const files = [new File([pdf.output('blob')], filename, { type: 'application/pdf' })];
+      if (navigator.canShare?.({ files })) {
+        try {
+          await navigator.share({ files });
+          return;
+        } catch (error) {
+          if (error.name === 'AbortError') return;
+        }
+      }
+      pdf.save(filename);
+      toast('PDF downloaded. Attach it to your WhatsApp chat.');
+    } catch (error) {
+      toast.error(`Could not prepare the receipt PDF: ${error.message}`);
+    }
+  };
+
   // Form State
   const [formData, setFormData] = useState({
+    receiptDate: treasuryDate(),
     memberId: '',
     amount: '',
     mode: 'Cash',
-    periodMonth: 'January',
-    periodYear: '2026',
+    periodMonth: currentMonth,
+    periodYear: String(currentYear),
     transactionId: '',
     remarks: ''
   });
@@ -74,7 +115,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
   // Filter States: 'all' | 'month' | 'custom_date'
   const [filterType, setFilterType] = useState('all');
   const [filterMonth, setFilterMonth] = useState('ALL');
-  const [filterYear, setFilterYear] = useState('2026');
+  const [filterYear, setFilterYear] = useState(String(currentYear));
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [filterPaymentMode, setFilterPaymentMode] = useState('ALL');
@@ -100,23 +141,18 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
       // 3. Month / Date Range Filter
       if (filterType === 'month') {
         if (filterYear !== 'ALL') {
-          const rYear = r.period_year || (r.created_at ? new Date(r.created_at).getFullYear().toString() : '');
+          const rYear = r.period_year || receiptDate(r).slice(0, 4);
           if (rYear !== filterYear) return false;
         }
         if (filterMonth !== 'ALL') {
-          const rMonth = r.period_month;
-          const createdMonth = r.created_at ? new Date(r.created_at).toLocaleString('en-US', { month: 'long' }) : '';
-          if (rMonth !== filterMonth && createdMonth !== filterMonth) {
+          const rMonth = r.period_month || MONTHS[Number(receiptDate(r).slice(5, 7)) - 1];
+          if (rMonth !== filterMonth) {
             return false;
           }
         }
       } else if (filterType === 'custom_date') {
         if (startDate || endDate) {
-          const rDate = new Date(r.created_at);
-          const y = rDate.getFullYear();
-          const m = String(rDate.getMonth() + 1).padStart(2, '0');
-          const d = String(rDate.getDate()).padStart(2, '0');
-          const localDateStr = `${y}-${m}-${d}`;
+          const localDateStr = receiptDate(r);
 
           if (startDate && localDateStr < startDate) return false;
           if (endDate && localDateStr > endDate) return false;
@@ -127,6 +163,8 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
     });
   }, [receipts, searchTerm, filterType, filterMonth, filterYear, startDate, endDate, filterPaymentMode]);
 
+  const { visibleRows, showMore, remaining } = useVisibleRows(filteredReceipts);
+
   const filteredTotalAmount = useMemo(() => {
     return filteredReceipts
       .filter(r => r.status !== 'void')
@@ -136,6 +174,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
   // Handle Receipt Creation
   const handleCreateReceipt = async (e) => {
     e.preventDefault();
+    if (loading || !canWrite) return;
     if (!formData.memberId) {
       toast.error("Please select a member!");
       return;
@@ -143,63 +182,20 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
     setLoading(true);
 
     try {
-      let data = null;
-      let retries = 3;
-      let currentError = null;
-
-      while (retries > 0) {
-        // Calculate next sequential receipt number by fetching the latest one
-        const { data: latestReceipt } = await supabase
-          .from('receipts')
-          .select('receipt_no')
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        let nextNum = 1;
-        if (latestReceipt && latestReceipt.length > 0) {
-          const lastNo = latestReceipt[0].receipt_no;
-          const match = lastNo.match(/REC-(\d+)/);
-          if (match) {
-            nextNum = parseInt(match[1], 10) + 1;
-          }
-        }
-        
-        const newReceiptNo = `TOLOBA-REC-${String(nextNum).padStart(4, '0')}`;
-
-        const { data: insertData, error } = await supabase.from('receipts').insert([
-          {
-            receipt_no: newReceiptNo,
-            member_id: formData.memberId,
-            amount: parseFloat(formData.amount),
-            payment_mode: formData.mode,
-            transaction_id: formData.mode === 'UPI' ? formData.transactionId : null,
-            period_month: formData.periodMonth,
-            period_year: formData.periodYear,
-            remarks: formData.remarks || null
-          }
-        ]).select('*, members(name, its_number, phone)').single();
-
-        if (!error) {
-          data = insertData;
-          break; // Success!
-        }
-        
-        // If it's a unique constraint violation (code 23505), retry
-        if (error.code === '23505') {
-          retries -= 1;
-          currentError = error;
-          // small delay before retry
-          await new Promise(res => setTimeout(res, 300));
-        } else {
-          throw error; // Other error, throw immediately
-        }
+      if (!formData.receiptDate || formData.receiptDate > treasuryDate()) {
+        throw new Error('Choose a receipt date through today.');
       }
-
-      if (!data) throw currentError || new Error("Failed to generate unique receipt number after retries.");
-
-      // Audit Log
-      const selectedMember = members.find(m => m.id === formData.memberId);
-      await logAuditEvent(user, 'CREATE_RECEIPT', `Generated receipt ${data.receipt_no} for ₹${formData.amount} (${selectedMember?.name})`);
+      const { data, error } = await supabase.from('receipts').insert({
+        receipt_date: formData.receiptDate,
+        member_id: formData.memberId,
+        amount: formData.amount,
+        payment_mode: formData.mode,
+        transaction_id: formData.mode === 'UPI' ? formData.transactionId : null,
+        period_month: formData.periodMonth,
+        period_year: formData.periodYear,
+        remarks: formData.remarks || null
+      }).select('*, members(name, its_number, phone)').single();
+      if (error) throw error;
 
       setSelectedReceipt(data);
       setViewMode('print');
@@ -226,12 +222,11 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
       setLoading(true);
       const { error } = await supabase
         .from('receipts')
-        .update({ status: 'void', remarks: `VOIDED: ${voidPrompt.reason}` })
-        .eq('id', voidPrompt.receipt.id);
+        .update({ status: 'void', void_reason: voidPrompt.reason.trim() })
+        .eq('id', voidPrompt.receipt.id).eq('status', 'valid').select('id').single();
 
       if (error) throw error;
 
-      await logAuditEvent(user, 'VOID_RECEIPT', `Voided receipt ${voidPrompt.receipt.receipt_no}. Reason: ${voidPrompt.reason}`);
       toast.success(`Receipt ${voidPrompt.receipt.receipt_no} has been voided.`);
       setVoidPrompt({ show: false, receipt: null, reason: '' });
       onRefresh();
@@ -261,7 +256,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
       'Transaction ID / UTR': r.transaction_id || 'N/A',
       'Period': `${r.period_month} ${r.period_year}`,
       'Status': r.status,
-      'Date': new Date(r.created_at).toLocaleDateString('en-GB')
+      'Date': formatTreasuryDate(receiptDate(r))
     }));
     exportToExcel(exportData, filename);
   };
@@ -297,8 +292,8 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
               <button 
                 onClick={() => {
                   setFormData({
-                    memberId: '', amount: '', mode: 'Cash',
-                    periodMonth: 'January', periodYear: '2026', transactionId: '', remarks: ''
+                    receiptDate: treasuryDate(), memberId: '', amount: '', mode: 'Cash',
+                    periodMonth: MONTHS[Number(treasuryDate().slice(5, 7)) - 1], periodYear: treasuryDate().slice(0, 4), transactionId: '', remarks: ''
                   });
                   setViewMode('create');
                 }} 
@@ -485,7 +480,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
             {filteredReceipts.length === 0 ? (
               <div className="py-12 text-center text-slate-400 text-sm">No receipts found.</div>
             ) : (
-              filteredReceipts.map(r => (
+              visibleRows.map(r => (
                 <div key={r.id} className={`p-4 flex items-center justify-between gap-3 hover:bg-slate-50/60 transition-colors ${r.status === 'void' ? 'bg-red-50/40 opacity-70' : ''}`}>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -493,7 +488,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
                         {r.receipt_no}
                       </span>
                       <span className="text-[11px] text-slate-400 font-medium">
-                        {new Date(r.created_at).toLocaleDateString('en-GB')}
+                        {formatTreasuryDate(receiptDate(r))}
                       </span>
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${r.status === 'void' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-800'}`}>
                         {r.status?.toUpperCase() || 'VALID'}
@@ -547,6 +542,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
               <thead>
                 <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider border-b border-slate-200">
                   <th className="py-3.5 px-4 md:px-6 font-semibold">Receipt No</th>
+                  <th className="py-3.5 px-4 md:px-6 font-semibold">Receipt Date</th>
                   <th className="py-3.5 px-4 md:px-6 font-semibold">Member Name</th>
                   <th className="py-3.5 px-4 md:px-6 font-semibold">ITS</th>
                   <th className="py-3.5 px-4 md:px-6 font-semibold">Amount</th>
@@ -558,11 +554,12 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredReceipts.length === 0 ? (
-                  <tr><td colSpan="8" className="py-12 text-center text-slate-400">No receipts found.</td></tr>
+                  <tr><td colSpan="9" className="py-12 text-center text-slate-400">No receipts found.</td></tr>
                 ) : (
-                  filteredReceipts.map(r => (
+                  visibleRows.map(r => (
                     <tr key={r.id} className={`hover:bg-slate-50/80 transition-colors ${r.status === 'void' ? 'bg-red-50/50 opacity-60' : ''}`}>
                       <td className="py-4 px-4 md:px-6 font-mono font-bold text-toloba">{r.receipt_no}</td>
+                      <td className="py-4 px-4 md:px-6 text-slate-600">{formatTreasuryDate(receiptDate(r))}</td>
                       <td className="py-4 px-4 md:px-6 font-semibold text-slate-800">{r.members?.name || 'N/A'}</td>
                       <td className="py-4 px-4 md:px-6 font-mono text-slate-600">{r.members?.its_number || '---'}</td>
                       <td className="py-4 px-4 md:px-6 font-extrabold text-slate-900">₹{parseFloat(r.amount).toLocaleString('en-IN')}</td>
@@ -601,6 +598,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
               </tbody>
             </table>
           </div>
+        <ShowMoreRows remaining={remaining} onClick={showMore} />
         </div>
       )}
 
@@ -613,6 +611,13 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
           </div>
 
           <form onSubmit={handleCreateReceipt} className="space-y-6">
+            <label className="block">
+              <span className="block text-sm font-semibold mb-1">Receipt date</span>
+              <input type="date" required max={treasuryDate()} className="input-field"
+                value={formData.receiptDate}
+                onChange={event => setFormData({ ...formData, receiptDate: event.target.value })} />
+            </label>
+
             <div>
               <label className="block text-xs font-bold uppercase text-slate-600 mb-2">Select Member</label>
               <CustomSelect 
@@ -621,7 +626,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
                 onChange={e => setFormData({...formData, memberId: e.target.value})}
                 options={[
                   { value: '', label: '-- Search & Choose Member --' },
-                  ...members.map(m => ({ value: m.id, label: `${m.name} (ITS: ${m.its_number})` }))
+                  ...members.filter(m => m.status === 'active').map(m => ({ value: m.id, label: `${m.name} (ITS: ${m.its_number})` }))
                 ]}
               />
             </div>
@@ -645,7 +650,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
                   className="input-field text-sm" 
                   value={formData.periodYear} 
                   onChange={e => setFormData({...formData, periodYear: e.target.value})}
-                  options={['2024', '2025', '2026', '2027', '2028'].map(y => ({ value: y, label: y }))}
+                  options={YEARS.map(y => ({ value: y, label: y }))}
                 />
               </div>
             </div>
@@ -672,7 +677,9 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
                   <input 
                     type="number" 
                     required 
-                    min="1" 
+                    min="0.01"
+                    max="9999999999.99"
+                    step="0.01"
                     className="input-field pl-10 font-extrabold text-base" 
                     placeholder="0.00" 
                     value={formData.amount} 
@@ -723,44 +730,31 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
       {/* ===== PRINT VIEW ===== */}
       {viewMode === 'print' && selectedReceipt && (
         <div className="max-w-3xl mx-auto">
-          <div className="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
-            <button onClick={() => setViewMode('list')} className="text-slate-600 hover:text-slate-900 font-bold text-xs flex items-center gap-2 self-start">
-              ← Back to Receipts List
+          <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 sm:mb-6">
+            <button type="button" onClick={() => setViewMode('list')} className={`${receiptAction} border-transparent text-slate-600 enabled:hover:bg-white enabled:hover:text-slate-900`}>
+              <ArrowLeft size={16} className="shrink-0" aria-hidden="true" />
+              Back to receipts
             </button>
-            
-            <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
-              {selectedReceipt.members?.phone && (
-                <a 
-                  href={`https://wa.me/${selectedReceipt.members.phone}?text=${encodeURIComponent(
-                    `*TOLOBA UL KULLIYAAT IL MUMINOON (ANAND)*\n` +
-                    `━━━━━━━━━━━━━━━━━━━━\n` +
-                    `*OFFICIAL RECEIPT*\n\n` +
-                    `Receipt No: *${selectedReceipt.receipt_no}*\n` +
-                    `Date: ${new Date(selectedReceipt.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}\n\n` +
-                    `Received From: *${selectedReceipt.members.name}*\n` +
-                    `ITS: ${selectedReceipt.members.its_number}\n\n` +
-                    `Amount: *₹${parseFloat(selectedReceipt.amount).toLocaleString('en-IN', {minimumFractionDigits: 2})}*\n` +
-                    `Mode: ${selectedReceipt.payment_mode}${selectedReceipt.payment_mode === 'UPI' ? ' (Txn: ' + selectedReceipt.transaction_id + ')' : ''}\n` +
-                    `Period: ${selectedReceipt.period_month} ${selectedReceipt.period_year}\n\n` +
-                    `Purpose: Fee / Contribution\n` +
-                    `━━━━━━━━━━━━━━━━━━━━\n` +
-                    `_Thank you for your contribution._\n` +
-                    `_May Allah grant barakat in your wealth and health._`
-                  )}`} 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  className="btn-primary flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-xs shadow-md shadow-green-600/20 py-2.5 px-4"
-                >
-                  <MessageCircle size={16} /> Send WhatsApp
-                </a>
-              )}
 
-              <button onClick={() => window.print()} className="btn-primary flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 transition-all text-xs shadow-md py-2.5 px-4">
-                <Printer size={16} /> Print / Download PDF
+            <div className="flex flex-wrap gap-2">
+              {canWrite && (
+                <button type="button" disabled={!buildReceiptPDF} onClick={shareReceipt} className={`${receiptAction} border-transparent bg-toloba text-white enabled:hover:bg-toloba-dark`}>
+                  <MessageCircle size={16} className="shrink-0" aria-hidden="true" />
+                  Share PDF via WhatsApp
+                </button>
+              )}
+              <button type="button" disabled={!buildReceiptPDF} onClick={() => buildReceiptPDF(selectedReceipt).save(`${selectedReceipt.receipt_no}.pdf`)} className={secondaryReceiptAction}>
+                <Download size={16} className="shrink-0" aria-hidden="true" />
+                Download PDF
+              </button>
+              <button type="button" onClick={() => window.print()} className={secondaryReceiptAction}>
+                <Printer size={16} className="shrink-0" aria-hidden="true" />
+                Print
               </button>
             </div>
           </div>
 
+          {pdfError && <p role="alert" className="no-print text-sm text-red-700">{pdfError}</p>}
           {/* Printable Container */}
           <div id="printable-receipt" className="bg-white border border-slate-200 shadow-2xl rounded-xl relative overflow-hidden" style={{fontFamily: "'Inter', sans-serif"}}>
             
@@ -781,7 +775,7 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
             <div className="px-4 sm:px-8 py-2.5 sm:py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2 text-xs">
               <div className="flex gap-4 sm:gap-6 flex-wrap">
                 <p className="text-slate-600">Receipt No: <span className="font-bold text-toloba-dark text-xs sm:text-sm">{selectedReceipt.receipt_no}</span></p>
-                <p className="text-slate-600">Date: <span className="font-bold text-slate-800">{new Date(selectedReceipt.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span></p>
+                <p className="text-slate-600">Date: <span className="font-bold text-slate-800">{formatTreasuryDate(receiptDate(selectedReceipt))}</span></p>
               </div>
               <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${selectedReceipt.status === 'void' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-800'}`}>
                 {selectedReceipt.status === 'void' ? 'VOIDED' : 'OFFICIAL RECEIPT'}
@@ -913,3 +907,5 @@ export default function ReceiptsManager({ receipts, members, user, canWrite, onR
     </div>
   );
 }
+
+export default memo(ReceiptsManager);
