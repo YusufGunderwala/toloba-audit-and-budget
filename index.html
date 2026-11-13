@@ -9,14 +9,92 @@
     <style>
       body { margin: 0; }
       #root:not(:empty) + .startup { display: none; }
-      .startup { position: fixed; inset: 0; display: grid; place-items: center; background: #f8fafc; color: #10442f; font: 600 0.875rem system-ui, sans-serif; }
-      .startup-content { display: grid; justify-items: center; gap: 1.25rem; padding: 1rem; text-align: center; }
-      .startup-mark { position: relative; width: clamp(7rem, 32vmin, 12rem); aspect-ratio: 1; display: grid; place-items: center; }
-      .startup-mark::before { content: ""; position: absolute; inset: 5%; border-radius: 50%; border: 1px solid #287e5766; background: radial-gradient(circle, #d9eee0, transparent 70%); animation: startup-ring 2.2s ease-out infinite; }
-      .startup-mark img { position: relative; width: 100%; height: 100%; object-fit: contain; animation: startup-logo-settle 480ms cubic-bezier(.22,1,.36,1) both; }
-      @keyframes startup-ring { from { transform: scale(.92); opacity: .8; } to { transform: scale(1.32); opacity: 0; } }
-      @keyframes startup-logo-settle { from { transform: scale(.94); } to { transform: scale(1); } }
-      @media (prefers-reduced-motion: reduce) { .startup-mark::before, .startup-mark img { animation: none; } }
+      .startup {
+        --intro-duration: 2.8s;
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: radial-gradient(ellipse at center, #215c47, #102f25 67%);
+        color: #f3f4e9;
+        font: 600 0.875rem Inter, system-ui, sans-serif;
+      }
+      .startup-content {
+        display: grid;
+        justify-items: center;
+        gap: clamp(1.6rem, 7vmin, 3rem);
+        padding: 1rem;
+        text-align: center;
+      }
+      .startup-mark {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: clamp(6.5rem, 38vmin, 13rem);
+        aspect-ratio: 1;
+        isolation: isolate;
+        animation: startup-reveal var(--intro-duration) ease-in-out both;
+      }
+      .startup-ring,
+      .startup-orbit {
+        position: absolute;
+        inset: -15%;
+        border-radius: 50%;
+      }
+      .startup-ring {
+        border: 1px solid #d5bd7b50;
+        box-shadow: 0 0 0 0.6rem #d5bd7b18, 0 0 2.5rem #071c15a1;
+        animation: startup-engraving var(--intro-duration) ease-out both;
+      }
+      .startup-orbit {
+        inset: -8%;
+        background: conic-gradient(from 15deg, transparent 0 72%, #c7a45c 88%, #fff0b3 98%, transparent);
+        mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1px));
+        animation: startup-orbit var(--intro-duration) cubic-bezier(.2,.75,.3,1) both;
+      }
+      .startup-seal {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        border: 1px solid #eed699;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 22%, #fffdf0, #deebd9 82%);
+        box-shadow: 0 0.7rem 2rem #071c1566, inset 0 0 0 0.35rem #faf3db70;
+      }
+      .startup-seal img { width: 91%; height: 91%; object-fit: contain; }
+      .startup-seal::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(110deg, transparent 38%, #fff9d6a6 50%, transparent 62%);
+        mix-blend-mode: screen;
+        transform: translateX(-100%);
+        animation: startup-glint var(--intro-duration) ease-out both;
+      }
+      @keyframes startup-reveal {
+        0% { transform: scale(.94); }
+        32% { transform: scale(1.035); }
+        64%, 100% { transform: scale(1); }
+      }
+      @keyframes startup-engraving {
+        0% { transform: scale(.84); opacity: .2; }
+        56%, 100% { transform: scale(1); opacity: 1; }
+      }
+      @keyframes startup-orbit {
+        0% { transform: rotate(-130deg); opacity: .35; }
+        55% { opacity: 1; }
+        100% { transform: rotate(185deg); opacity: .76; }
+      }
+      @keyframes startup-glint {
+        0%, 30% { transform: translateX(-100%); }
+        75%, 100% { transform: translateX(100%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .startup-mark, .startup-ring, .startup-orbit, .startup-seal::after { animation: none; }
+      }
     </style>
   </head>
   <body>
@@ -24,7 +102,11 @@
     <div class="startup" role="status">
       <div class="startup-content">
         <div class="startup-mark">
-          <img src="/startup-logo.webp" alt="Toloba" fetchpriority="high" width="367" height="384" />
+          <span class="startup-ring" aria-hidden="true"></span>
+          <span class="startup-orbit" aria-hidden="true"></span>
+          <div class="startup-seal">
+            <img src="/startup-logo.webp" alt="Toloba" fetchpriority="high" width="367" height="384" />
+          </div>
         </div>
         <span>Loading treasury portal…</span>
       </div>

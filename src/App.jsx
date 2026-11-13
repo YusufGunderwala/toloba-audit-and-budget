@@ -9,6 +9,21 @@ function App() {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [introComplete, setIntroComplete] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const intro = document.querySelector('.startup-mark')?.getAnimations?.()
+      .find(animation => animation.animationName === 'startup-reveal');
+    const finishIntro = () => {
+      if (mounted) setIntroComplete(true);
+    };
+
+    if (intro) intro.finished.then(finishIntro, finishIntro);
+    else finishIntro();
+
+    return () => { mounted = false; };
+  }, []);
 
   // Check for existing session on app load
   useEffect(() => {
@@ -81,8 +96,8 @@ function App() {
     setUserRole(null);
   };
 
-  // Keep the HTML startup screen visible while the session is restored.
-  if (loading) return null;
+  // Keep the HTML startup screen visible until session restore and the reveal finish.
+  if (loading || !introComplete) return null;
 
   // If not logged in, show login page
   if (!user || !userRole) {

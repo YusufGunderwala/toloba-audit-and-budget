@@ -26,6 +26,7 @@ import {
 } from 'recharts';
 import { treasuryDate, receiptDate, formatTreasuryDate } from '../../lib/treasuryDates';
 import { exportToExcel } from '../../lib/exportUtils';
+import AnimatedAmount from '../ui/AnimatedAmount';
 
 const COLORS = ['#105c38', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#64748b'];
 
@@ -132,7 +133,7 @@ function DashboardOverview({ receipts = [], expenses = [], income = [], setActiv
           <div className="flex justify-between items-start gap-2">
             <div className="min-w-0">
               <p className="text-[10px] sm:text-[11px] font-bold uppercase text-slate-400 tracking-wider truncate">Revenue</p>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-extrabold text-slate-900 mt-1 sm:mt-1.5 truncate">₹{totalIncome.toLocaleString('en-IN')}</h3>
+              <h3 className="text-lg sm:text-xl md:text-2xl font-extrabold text-slate-900 mt-1 sm:mt-1.5 truncate"><AnimatedAmount amount={totalIncome} /></h3>
             </div>
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center flex-shrink-0 border border-emerald-100">
               <TrendingUp size={16} />
@@ -151,7 +152,7 @@ function DashboardOverview({ receipts = [], expenses = [], income = [], setActiv
           <div className="flex justify-between items-start gap-2">
             <div className="min-w-0">
               <p className="text-[10px] sm:text-[11px] font-bold uppercase text-slate-400 tracking-wider truncate">Outflow</p>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-extrabold text-rose-600 mt-1 sm:mt-1.5 truncate">₹{totalExpense.toLocaleString('en-IN')}</h3>
+              <h3 className="text-lg sm:text-xl md:text-2xl font-extrabold text-rose-600 mt-1 sm:mt-1.5 truncate"><AnimatedAmount amount={totalExpense} /></h3>
             </div>
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center flex-shrink-0 border border-rose-100">
               <TrendingDown size={16} />
@@ -168,7 +169,7 @@ function DashboardOverview({ receipts = [], expenses = [], income = [], setActiv
             <div className="min-w-0">
               <p className="text-[10px] sm:text-[11px] font-bold uppercase text-toloba-dark tracking-wider truncate">Surplus</p>
               <h3 className={`text-lg sm:text-xl md:text-2xl font-extrabold mt-1 sm:mt-1.5 truncate ${netSurplus >= 0 ? 'text-toloba-dark' : 'text-rose-600'}`}>
-                ₹{netSurplus.toLocaleString('en-IN')}
+                <AnimatedAmount amount={netSurplus} />
               </h3>
             </div>
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-toloba text-white rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm shadow-toloba/30">
@@ -185,7 +186,7 @@ function DashboardOverview({ receipts = [], expenses = [], income = [], setActiv
           <div className="flex justify-between items-start gap-2">
             <div className="min-w-0">
               <p className="text-[10px] sm:text-[11px] font-bold uppercase text-slate-400 tracking-wider truncate">Toloba Income</p>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-extrabold text-amber-600 mt-1 sm:mt-1.5 truncate">₹{totalOtherIncome.toLocaleString('en-IN')}</h3>
+              <h3 className="text-lg sm:text-xl md:text-2xl font-extrabold text-amber-600 mt-1 sm:mt-1.5 truncate"><AnimatedAmount amount={totalOtherIncome} /></h3>
             </div>
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center flex-shrink-0 border border-amber-100">
               <IndianRupee size={16} />
