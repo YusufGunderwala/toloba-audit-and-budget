@@ -27,3 +27,6 @@ dist-ssr
 
 # Local treasury exports
 /private-exports/
+
+# Supabase CLI
+supabase/.temp/

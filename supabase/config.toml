@@ -1,2 +1,4 @@
+project_id = "mdlpoequiijnpykfxovf"
+
 [functions.manage-treasury-users]
 verify_jwt = false
