@@ -209,10 +209,12 @@ function ReceiptsManager({ receipts, members, canWrite, onRefresh, searchTerm })
 
   // Void Receipt
   const handleVoidReceipt = (receipt) => {
+    if (!canWrite) return;
     setVoidPrompt({ show: true, receipt, reason: '' });
   };
 
   const confirmVoidReceipt = async () => {
+    if (!canWrite || loading) return;
     if (!voidPrompt.reason.trim()) {
       toast.error("Please provide a reason for voiding.");
       return;

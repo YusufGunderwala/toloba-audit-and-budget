@@ -66,10 +66,12 @@ function EventBudgetManager({ events, expenses, canWrite, onRefresh }) {
   };
 
   const handleDeleteEvent = (event) => {
+    if (!canWrite) return;
     setDeletePrompt({ show: true, event });
   };
 
   const confirmDeleteEvent = async () => {
+    if (!canWrite || loading) return;
     try {
       setLoading(true);
       const { error } = await supabase.from('events').delete().eq('id', deletePrompt.event.id).select('id').single();

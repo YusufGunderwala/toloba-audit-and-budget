@@ -90,10 +90,12 @@ function ExpensesManager({ expenses, events, canWrite, onRefresh, searchTerm }) 
   };
 
   const handleDeleteExpense = (exp) => {
+    if (!canWrite) return;
     setDeletePrompt({ show: true, exp });
   };
 
   const confirmDeleteExpense = async () => {
+    if (!canWrite || loading) return;
     try {
       setLoading(true);
       const { error } = await supabase.from('expenses').delete().eq('id', deletePrompt.exp.id).select('id').single();

@@ -42,6 +42,7 @@ function MembersManager({ members, receipts, invoices, canWrite, onRefresh, sear
   // Handle Add / Edit Member
   const handleSubmitMember = async (e) => {
     e.preventDefault();
+    if (!canWrite || loading) return;
     if (!/^\d{8}$/.test(formData.its_number)) {
       toast.error("ITS Number must be exactly 8 digits.");
       return;
@@ -85,10 +86,12 @@ function MembersManager({ members, receipts, invoices, canWrite, onRefresh, sear
 
   // Deactivate Member
   const handleDeactivateMember = (member) => {
+    if (!canWrite) return;
     setDeactivatePrompt({ show: true, member });
   };
 
   const confirmDeactivateMember = async () => {
+    if (!canWrite || loading) return;
     try {
       setLoading(true);
       const { error } = await supabase.from('members').update({ status: 'inactive' }).eq('id', deactivatePrompt.member.id).select('id').single();
